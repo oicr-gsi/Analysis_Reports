@@ -63,12 +63,12 @@ def get_num_pass(file):
         )
 
 
-def get_short_name(regex, full_name):
+def get_key(regex, full_name):
     '''
     (str, str) -> str
 
     Returns the portion of full_name that matches the given regex.
-    Will return the full name if no matches are found.
+    Will return full_name if no matches are found.
 
     Parameters
     ----------
@@ -85,8 +85,8 @@ def get_json_data(input_file, file_re):
     '''
     (str, str) -> str
 
-    Returns a json object with the file name abbreviated to the regex
-    specified by file_re and number of calls and the number of PASS calls.
+    Returns a json object with keys as the file names abbreviated to the regex
+    specified by file_re, containing the number of calls and the number of PASS calls.
 
     Parameters
     ----------
@@ -97,18 +97,22 @@ def get_json_data(input_file, file_re):
 
     vcf_file_names = get_file_names(input_file)
 
-    data_dict = { i : {"file_name" : {}, "data" : {} } for i in range(len(vcf_file_names))}
+    data_dict = {}
+    for file in vcf_file_names:
+        print(file)
+        if get_key(file_re, file) in data_dict:
+            raise Exception("Duplicate file name, exiting...")
+        else:
+            data_dict[get_key(file_re, file)] = { "data" : {} }
+            data_dict[get_key(file_re, file)]["data"]["num_calls"] = get_num_calls(file)
+            data_dict[get_key(file_re, file)]["data"]["num_pass"] = get_num_pass(file)
 
-    for count, file in enumerate(vcf_file_names):
-        data_dict[count]["file_name"] = get_short_name(file_re, file)
-        data_dict[count]["data"]["num_calls"] = get_num_calls(file)
-        data_dict[count]["data"]["num_pass"] = get_num_pass(file)
+    with open('output.json', 'w', encoding='utf-8') as file:
+        json.dump(data_dict, file, ensure_ascii=False, indent=4)
     
-    json_object = json.dumps(data_dict, indent=4)
-    return json_object
-
 
 #driver code
 input_file = "in_files.txt"
-vcf_file_re = "PANX[^/]*vep\.vcf\.gz$"
-print(get_json_data(input_file, vcf_file_re))
+vcf_file_re = "PANX[^\/]*(?=\.mutect2)"
+
+get_json_data(input_file, vcf_file_re)
