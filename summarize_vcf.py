@@ -1,6 +1,7 @@
 import subprocess as sp
 import re
 import json
+import argparse
 
 
 def get_file_names(input_file):
@@ -99,7 +100,6 @@ def get_json_data(input_file, file_re):
 
     data_dict = {}
     for file in vcf_file_names:
-        print(file)
         if get_key(file_re, file) in data_dict:
             raise Exception("Duplicate file name, exiting...")
         else:
@@ -111,8 +111,13 @@ def get_json_data(input_file, file_re):
         json.dump(data_dict, file, ensure_ascii=False, indent=4)
     
 
-#driver code
-input_file = "in_files.txt"
-vcf_file_re = "PANX[^\/]*(?=\.mutect2)"
+if __name__ == '__main__':
+    
+    # create top-level parser
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--infile', type=str, required=True)
 
-get_json_data(input_file, vcf_file_re)
+    args = parser.parse_args()
+
+    vcf_file_re = "PANX[^\/]*(?=\.mutect2)"
+    get_json_data(args.infile, vcf_file_re)
