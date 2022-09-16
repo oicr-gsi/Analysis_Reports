@@ -3,7 +3,7 @@ import re
 import json
 import argparse
 
-def get_files(input_json):
+def get_files(input_json, process):
     '''
     (str) -> list[str]
 
@@ -15,16 +15,19 @@ def get_files(input_json):
 
     '''
     data = {}
-    files = []
 
     with open(input_json) as file:
         data = json.load(file)
     file.close()
 
     #get mutect2 files
-    files = [ case["mutations"]["file"] for case in data["cases"].values() if "mutations" in case.keys()]
+    vcf_files = {}
 
-    return files
+    for case_id, case in data["cases"].items():
+        if process in case.keys():
+            vcf_files[case_id] = case[process]["file"]
+
+    return vcf_files
 
 
 def get_num_calls(file):
@@ -129,23 +132,31 @@ def get_json_data(input_json, file_re):
     - file_re (str): regex specifying the abbreviated name
 
     '''
-    data_dict = {}
-    
-    vcf_files = get_files(input_json)
+    processes = ["mutations", "wg_structual_variants"]
+    data = {}
 
-    for counter, file in enumerate(vcf_files):
-        key = get_key(file_re, file)
-        if key in data_dict:
-            raise Exception("Duplicate file name, exiting...")
-        else:
-            data_dict[key] = { "data" : {} }
-            data_dict[key]["data"]["num_calls"] = get_num_calls(file)
-            data_dict[key]["data"]["num_pass"] = get_num_pass(file)
-            data_dict[key]["data"]["bcf_PASS_summary"] = get_sn(file)
+    with open(input_json) as file:
+        data = json.load(file)
+    file.close()
 
+    cases = { case_id : {} for case_id in data["cases"].keys()}
+    for case in cases.keys():
+        for process in processes:
+            cases[case][process] = {}
+
+    counter = 0
+
+    for process in processes:
+        vcf_files = get_files(input_json, process)
+        for case_id, vcf_file in vcf_files.items():
+            print(counter)
+            cases[case_id][process]["num_calls"] = get_num_calls(vcf_file)
+            cases[case_id][process]["num_pass"] = get_num_pass(vcf_file)
+            cases[case_id][process]["bcf_PASS_summary"] = get_sn(vcf_file)
+            counter = counter + 1
 
     with open('output.json', 'w', encoding='utf-8') as file:
-        json.dump(data_dict, file, ensure_ascii=False, indent=4)
+        json.dump(cases, file, ensure_ascii=False, indent=4)
     
 
 if __name__ == '__main__':
@@ -156,5 +167,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    vcf_file_re = "PANX[^\/]*(?=\.mutect2)"
-    get_json_data(args.infile, vcf_file_re)
+    mutect_vcf_file_re = "PANX[^\/]*(?=\.mutect2)"
+    get_json_data(args.infile, mutect_vcf_file_re)
