@@ -1,12 +1,19 @@
 <!DOCTYPE html>
-<html lang="en"></html>
-
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Sample Ids</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="./static/css/style.css">
+    <title>analysis_report</title>
 </head>
-
 <body>
+   
+   <table style="font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
+   <tr>
+     <td style="width: 40%; padding: 3px; text-align: left"><img src="./static/images/OICR_Logo_RGB_ENGLISH.png" alt="OICR_logo" title="OICR_logo" style="padding-right: 8px; padding-left:0px; width:10; height:10"></td>
+     <td style="width: 60%; padding: 3px; text-align: left"><p style="text-align: center; color: black; font-size:45px; font-family: Arial, Verdana, sans-serif; font-weight:bold">Data Release Report</p></td>
+   </tr>
+   </table>
+
     <h1>Sample Ids</h1>
     {% for id in sample_ids %}
         <li>
