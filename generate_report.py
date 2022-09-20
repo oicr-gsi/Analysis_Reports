@@ -3,6 +3,8 @@ from jinja2 import Environment, FileSystemLoader
 import pandas as pd
 import matplotlib.pyplot as plt
 from inspect import signature
+from xhtml2pdf import pisa
+import pdfkit
 
 def get_sample_ids(input_json):
     data = {}
@@ -88,7 +90,7 @@ def generate_plot(input_file, plot_name):
     df = pd.DataFrame(get_plot_data(input_file, plot_name), columns=["ids", "calls"])
     print(df)
     df.plot(x="ids", y="calls", kind="bar")
-    plt.savefig(f"./plots/{plot_name}_plot.png", bbox_inches="tight")
+    plt.savefig(f"/home/jqian/reports/Analysis_Reports/plots/{plot_name}_plot.png", bbox_inches="tight")
 
     context = {
     "plot": f"plots/{plot_name}_plot.png",
@@ -132,5 +134,24 @@ def generate_report(input_file):
     with open("sample_report.html", "w", encoding="utf-8") as results:
         results.write(contents)
         print("wrote to sample_report.html")
+
+    # Convert HTML to PDF
+    with open('report.pdf', "w+b") as out_pdf_file_handle:
+        pisa.CreatePDF(
+            src=contents,  # HTML to convert
+            dest=out_pdf_file_handle)  # File handle to receive result
+
+    # options = {
+    # 'page-size': 'Letter',
+    # 'margin-top': '0.35in',
+    # 'margin-right': '0.75in',
+    # 'margin-bottom': '0.75in',
+    # 'margin-left': '0.75in',
+    # 'encoding': "UTF-8",
+    # 'no-outline': None,
+    # 'enable-local-file-access': None
+    # }
+    # with open("sample_report.html") as f:
+    #     pdfkit.from_file(f, "report2.pdf", options=options)
 
 generate_report("output.json")
