@@ -6,37 +6,32 @@ from inspect import signature
 from xhtml2pdf import pisa
 import pdfkit
 
-def get_sample_ids(input_json):
-    data = {}
-
-    with open(input_json) as file:
-        data = json.load(file)
-    file.close()
-
-    sample_ids = list(data.keys())
+def get_sample_ids(data_dict):
+    sample_ids = list(data_dict.keys())
     sample_ids.sort()
 
     return sample_ids
 
-def get_table_data(input_json, table_name):
-    data = {}
+def get_table_data(data_dict, id_list):
+    table_data = {}
 
-    with open(input_json) as file:
-        data = json.load(file)
-    file.close()
+    processes = list(list(data_dict.values())[0].keys())
 
-    table_data = []
+    for process in processes:
+        table_data[process] = []
 
-    for sample in get_sample_ids(input_json):
-        table_data.append(data[sample][table_name])
-        table_data[-1]["id"] = sample
+        for sample in id_list:
+            table_data[process].append(data_dict[sample][process])
+            table_data[process][-1]["id"] = sample
 
-    return table_data
+    # for sample in get_sample_ids(data_dict):
+    #     table_data.append(data_dict[sample][table_name]) # list of dict
+    #     table_data[-1]["id"] = sample
+
+    return processes, table_data
 
 def generate_table(input_json, table_name):
 
-    environment = Environment(loader=FileSystemLoader("templates/"))
-    results_template = environment.get_template("table.html")
 
     context = {
         "table_data": get_table_data(input_json, table_name),
@@ -65,42 +60,30 @@ def generate_id_list(input_json):
     #     print("wrote to sample_id_.html")
 
 
+def get_plot_data(data_dict, id_list, processes):
+    plots = []
 
-def get_plot_data(input_json, plot_name):
-    data = {}
-
-    with open(input_json) as file:
-        data = json.load(file)
-    file.close()
-
-    plot_data = {
-        "ids": [],
-        "calls": []
-        }
+    for process in processes:
+        plot_data = {"ids": id_list, "calls" : []}
+        for sample_id in id_list:
+            plot_data["calls"].append(data_dict[sample_id][process]["num_calls"])
+        
+        plots.append(dict(process=process, plot=generate_plot(id_list, plot_data, process)))
     
-    plot_data["ids"] = get_sample_ids(input_json)
+    return plots
 
-    for id in plot_data["ids"]:
-        plot_data["calls"].append(data[id][plot_name]["num_calls"])
-    
-    return plot_data
-
-#NOTE: consider generate all the plots at once??
-def generate_plot(input_file, plot_name):
-    df = pd.DataFrame(get_plot_data(input_file, plot_name), columns=["ids", "calls"])
+def generate_plot(id_lists, plot_data, process):
+    df = pd.DataFrame(plot_data, columns=["ids", "calls"])
     print(df)
     df.plot(x="ids", y="calls", kind="bar")
-    plt.savefig(f"/home/jqian/reports/Analysis_Reports/plots/{plot_name}_plot.png", bbox_inches="tight")
+    plt.savefig(f"/home/jqian/reports/Analysis_Reports/plots/{process}_plot.png", bbox_inches="tight")
 
-    context = {
-    "plot": f"plots/{plot_name}_plot.png",
-    "plot_name": plot_name
-    }
+    return f"plots/{process}_plot.png"
 
-    environment = Environment(loader=FileSystemLoader("templates/"))
-    results_template = environment.get_template("plot.html")
+    # environment = Environment(loader=FileSystemLoader("templates/"))
+    # results_template = environment.get_template("plot.html")
 
-    return results_template.render(context)
+    # return results_template.render(context)
 
     # with open("sample_plot.html", "w", encoding="utf-8") as results:
     #     results.write(results_template.render(context))
@@ -108,28 +91,34 @@ def generate_plot(input_file, plot_name):
 
 
 def generate_report(input_file):
-    processes = ["mutations","wg_structual_variants"]
-    sections = [generate_id_list, generate_table, generate_plot]
+    # processes = ["mutations","wg_structual_variants"]
+    # sections = [generate_id_list, generate_table, generate_plot]
 
-    contents = ''
+    context = {}
+    data = {}
 
-    for section in sections:
-        repeat = True 
-        for process in processes:
-            if repeat:
-                num_args = len(signature(section).parameters)
-                repeat = num_args > 1
-                if(num_args >1):
-                    contents = contents + section(input_file, process)
-                else:
-                    contents = contents + section(input_file)
-            else:
-                break
+    with open(input_file) as file:
+        data = json.load(file)
+    file.close()
 
+    context["sample_ids"] = get_sample_ids(data)
+    context["processes"], context["table_data"] = get_table_data(data, context["sample_ids"])
+    context["plots"] = get_plot_data(data, context["sample_ids"], context["processes"])
+
+    with open('context.json', 'w', encoding='utf-8') as file:
+        json.dump(context, file, ensure_ascii=False, indent=4)
 
     # contents = contents + (generate_id_list(input_file))
     # contents = contents + (generate_table(input_file, "mutations"))
     # contents = contents + (generate_plot(input_file, "mutations"))
+
+    # with open('templates/index.html', 'r') as file:
+    #     contents = file.read()
+
+    environment = Environment(loader=FileSystemLoader("templates/"))
+    results_template = environment.get_template("base.html")
+
+    contents = results_template.render(context)
 
     with open("sample_report.html", "w", encoding="utf-8") as results:
         results.write(contents)

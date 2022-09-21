@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="./static/css/style.css">
+    <title>analysis_report</title>
+</head>
+<body>
+   <table style="width:100%; font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
+    <tr>
+      <td style="width: 40%; padding: 3px; text-align: left"><img src="./static/images/OICR_Logo_RGB_ENGLISH.png" alt="OICR_logo" title="OICR_logo" style="padding-right: 8px; padding-left:0px; width:6cm"></td>
+      <td style="width: 60%; padding: 3px; text-align: left"><p style="text-align: center; color: black; font-size:45px; font-family: Arial, Verdana, sans-serif; font-weight:bold">Analysis Report</p></td>
+    </tr>
+    </table>
+
+    <h2>1. List of Sample IDs</h2>
+
+    {% if sample_ids %}
+        <table class="id_table">
+            <thead>
+                <tr>
+                    <th>id</th>
+                </tr>
+            </thead>
+            {% for id in sample_ids %}
+            <tr>
+                <td>{{ id }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p>Error: no sample IDs found</p>
+    {% endif %}
+
+    <div style="page-break-after: always;"></div>
+    
+    <h2>2. Data summaries</h2>
+    {% if table_data %}
+        {% for process in processes %}
+            <h3>Table {{ loop.index }}. Summary of {{ process }}</h3>
+            <table class="summary_table">
+                <thead>
+                    <tr>
+                    <th style="border-bottom: none;"></th>
+                    <th style="border-bottom: none;"></th>
+                    <th colspan="4" style="text-align: center;">bcf PASS</th>
+                    </tr>
+                    <tr style="padding:0px">
+                        <th style="border-top: none;">id</th>
+                        <th style="border-top: none;"># calls</th>
+                        <th>records</th>
+                        <th>SNPs</th>
+                        <th>MNPs</th>
+                        <th>indels</th>
+                    </tr>
+                </thead>
+
+                {% for item in table_data[process] %}
+                    <tr class="{{ loop.cycle('row_odd', 'row_even') }}">
+                        <TD> <b>{{ item.id }}</b></TD>
+                        <TD> {{ item.num_calls }} </TD>
+                        <TD>{{ item.bcf_PASS_summary.records }}</TD>
+                        <TD>{{ item.bcf_PASS_summary.SNPs }}</TD>
+                        <TD>{{ item.bcf_PASS_summary.MNPs }}</TD>
+                        <TD>{{ item.bcf_PASS_summary.indels }}</TD>
+                    </tr>
+                {% endfor %}    
+            </table>
+            <div style="page-break-after: always;"></div>
+        {% endfor %}
+    {% else %}
+        <p>No tables to display</p>
+    {% endif %}
+
+    <h2>3. Data summary plots</h2>
+    {% if plots %}
+        {% for plot in plots %}
+            <h3>Figure {{ loop.index }}. Plot of {{ plot.process }}</h3>
+            <body>
+                <img src="{{ plot.plot }}"></img>
+            </body>
+            <div style="page-break-after: always;"></div>
+        {% endfor %}
+    {% else %}
+            <p>No plots to display</p>
+    {% endif %}
+
+</body>
