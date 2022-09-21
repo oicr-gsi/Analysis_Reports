@@ -6,7 +6,6 @@
     <title>analysis_report</title>
 </head>
 <body>
-   
    <table style="font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
    <tr>
      <td style="width: 40%; padding: 3px; text-align: left"><img src="./static/images/OICR_Logo_RGB_ENGLISH.png" alt="OICR_logo" title="OICR_logo" style="padding-right: 8px; padding-left:0px; width:10; height:10"></td>
@@ -14,10 +13,14 @@
    </tr>
    </table>
 
-    <h1>Sample Ids</h1>
-    {% for id in sample_ids %}
-        <li>
-            {{ id }}
-        </li>
-    {% endfor %}
+   <h2>1. List of Sample IDs</h2>
+        {% if sample_ids %}
+            {% for id in sample_ids %}
+                <li>
+                    {{ id }}
+                </li>
+            {% endfor %}
+        {% else %}
+            <p>Error: no sample IDs found</p>
+        {% endif %}
 </body>
