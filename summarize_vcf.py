@@ -3,47 +3,42 @@ import re
 import json
 import argparse
 
-def get_files(input_json, process):
+def get_files(data, processes):
     '''
-    (str) -> list[str]
+    (dict, list[str]) -> list[str]
 
-    Extracts the file paths from input_json
+    Extracts file paths for each process in processes from data
 
     Parameters
     ----------
-    - input_json (str): path to the file that contains the vcf files
+    - data (dict): dictionary containing parsed data
+    - processes (list[str]): list of processes
 
     '''
-    data = {}
-
-    with open(input_json) as file:
-        data = json.load(file)
-    file.close()
-
-    #get mutect2 files
-    vcf_files = {}
+    files = { case: {} for case in data["cases"].keys() }
 
     for case_id, case in data["cases"].items():
-        if process in case.keys():
-            vcf_files[case_id] = case[process]["file"]
+        for process in processes:
+            if process in case.keys():
+                files[case_id][process] = case[process]["file"]
+            else:
+                print(f"{case_id} is missing {process} file link")
 
-    return vcf_files
+    return files
 
 
-def get_num_calls(file):
+def get_cli_output(command):
     '''
     (str) -> int
-
-    Returns the number of calls in the vcf file
-
+    Returns the number of calls specified by command
     Parameters
     ----------
-    - file (str): path to the vcf file 
+    - command (str): command for command line
 
     '''
     return int(
         sp.check_output(
-            "zcat " + file + "| grep -v \"#\" | wc -l",
+            command,
             shell=True
             )
             .decode('ascii')
@@ -51,45 +46,7 @@ def get_num_calls(file):
         )
 
 
-def get_num_pass(file):
-    '''
-    (str) -> int
-
-    Returns the number of PASS calls in the vcf file
-
-    Parameters
-    ----------
-    - file (str): path to the vcf file 
-
-    '''
-    return int(
-        sp.check_output(
-            "zcat " + file + " | awk \'!/^#/ {count[$7]++} END {print count[\"PASS\"]}\'",
-            shell=True
-            )
-            .decode('ascii')
-            .strip()
-        )
-
-
-def get_key(regex, full_name):
-    '''
-    (str, str) -> str
-
-    Returns the portion of full_name that matches the given regex.
-    Will return full_name if no matches are found.
-
-    Parameters
-    ----------
-    - regex (str): regex specifying the abbreviated name
-    - full_name (str): the full name of the file
-
-    '''
-    match = re.search(regex, full_name)    
-    return match.group() if match is not None else full_name
-
-
-def get_sn(file):
+def vcf_get_sn(file):
     '''
     (str) -> dict
 
@@ -107,10 +64,10 @@ def get_sn(file):
     for stat in target_stats[1:]:
         regex = regex + "|" + "^SN.*"+ stat
 
-    data = sp.check_output(
-        "bcftools stats -f \"PASS\" " + file + "|grep -E '" + regex + "' |awk '{print $(NF)}'",
-        shell=True
-        ).decode('ascii').strip()
+    data =  sp.check_output(
+            "bcftools stats -f \"PASS\" " + file + "|grep -E '" + regex + "' |awk '{print $(NF)}'",
+            shell=True
+            ).decode('ascii').strip()
     data = data.split("\n")
     
     for count, stat in enumerate(target_stats):
@@ -118,8 +75,38 @@ def get_sn(file):
 
     return sn_stats
 
+def get_mutations_data(file):
+    data = {}
+    data["num_calls"] = get_cli_output(f"zcat {file} | grep -v \"#\" | wc -l")
+    data["num_pass"] = get_cli_output("zcat " + file + " | awk \'!/^#/ {count[$7]++} END {print count[\"PASS\"]}\'")
+    data["bcf_PASS_summary"] = vcf_get_sn(file)
+    return data
 
-def get_json_data(input_json, file_re):
+def get_wgsv_data(file):
+    #essentially a repeat of get_mutations_data, but repeated since parsing may diverge
+    data = {}
+    data["num_calls"] = get_cli_output(f"zcat {file} | grep -v \"#\" | wc -l")
+    data["num_pass"] = get_cli_output("zcat " + file + " | awk \'!/^#/ {count[$7]++} END {print count[\"PASS\"]}\'")
+    data["bcf_PASS_summary"] = vcf_get_sn(file)
+    return data
+
+def get_msv_data(file):
+    data = {}
+    data["num_fusions"] = get_cli_output(f"cat {file}| grep -v \"#\" | wc -l")
+    return data
+
+def get_fusions_data(file):
+    data = {}
+    data["num_fusions"] = get_cli_output(f"cat {file}| grep -v \"#\" | wc -l")
+    return data
+
+def get_cns_data(file):
+    data = {}
+    data["num_cnv"] = get_cli_output(f"tail -n +2 {file} | wc -l")
+    return data
+
+
+def get_json_data(input_json):
     '''
     (str, str) -> str
 
@@ -132,13 +119,21 @@ def get_json_data(input_json, file_re):
     - file_re (str): regex specifying the abbreviated name
 
     '''
-    processes = ["mutations", "wg_structual_variants"]
+    processes = ["mutations", "wg_structual_variants", "mavis_structual_variants", "fusions", "copynumber_segmentation"]
+    process_parsers = {
+        "mutations": get_mutations_data,
+        "wg_structual_variants": get_wgsv_data,
+        "mavis_structual_variants": get_msv_data,
+        "fusions": get_fusions_data,
+        "copynumber_segmentation": get_cns_data,
+        }
     data = {}
 
     with open(input_json) as file:
         data = json.load(file)
     file.close()
 
+    #retval with all parsed data
     cases = { case_id : {} for case_id in data["cases"].keys()}
     for case in cases.keys():
         for process in processes:
@@ -146,14 +141,13 @@ def get_json_data(input_json, file_re):
 
     counter = 0
 
-    for process in processes:
-        vcf_files = get_files(input_json, process)
-        for case_id, vcf_file in vcf_files.items():
-            print(counter)
-            cases[case_id][process]["num_calls"] = get_num_calls(vcf_file)
-            cases[case_id][process]["num_pass"] = get_num_pass(vcf_file)
-            cases[case_id][process]["bcf_PASS_summary"] = get_sn(vcf_file)
-            counter = counter + 1
+    files = get_files(data, processes)
+
+    for case in cases.keys():
+        print(counter)
+        for process in processes:
+            cases[case][process] = process_parsers[process](files[case][process])
+        counter = counter + 1
 
     with open('output.json', 'w', encoding='utf-8') as file:
         json.dump(cases, file, ensure_ascii=False, indent=4)
@@ -167,5 +161,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    mutect_vcf_file_re = "PANX[^\/]*(?=\.mutect2)"
-    get_json_data(args.infile, mutect_vcf_file_re)
+    get_json_data(args.infile)
