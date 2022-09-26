@@ -2,6 +2,7 @@ import subprocess as sp
 import re
 import json
 import argparse
+import pandas
 
 def get_files(data, processes):
     '''
@@ -31,6 +32,7 @@ def get_cli_output(command):
     '''
     (str) -> int
     Returns the number of calls specified by command
+
     Parameters
     ----------
     - command (str): command for command line
@@ -76,6 +78,16 @@ def vcf_get_sn(file):
     return sn_stats
 
 def get_mutations_data(file):
+    '''
+    (str) -> dict
+
+    Selects statistics for the mutations process from file
+
+    Parameters
+    ----------
+    - file (str): path to file to be parsed
+
+    '''
     data = {}
     data["num_calls"] = get_cli_output(f"zcat {file} | grep -v \"#\" | wc -l")
     data["num_pass"] = get_cli_output("zcat " + file + " | awk \'!/^#/ {count[$7]++} END {print count[\"PASS\"]}\'")
@@ -83,6 +95,16 @@ def get_mutations_data(file):
     return data
 
 def get_wgsv_data(file):
+    '''
+    (str) -> dict
+
+    Selects statistics for the wg_structural_variants process from file
+
+    Parameters
+    ----------
+    - file (str): path to file to be parsed
+
+    '''
     #essentially a repeat of get_mutations_data, but repeated since parsing may diverge
     data = {}
     data["num_calls"] = get_cli_output(f"zcat {file} | grep -v \"#\" | wc -l")
@@ -91,16 +113,46 @@ def get_wgsv_data(file):
     return data
 
 def get_msv_data(file):
+    '''
+    (str) -> dict
+
+    Selects statistics for the mavis_structural_variants process from file
+
+    Parameters
+    ----------
+    - file (str): path to file to be parsed
+
+    '''
     data = {}
     data["num_fusions"] = get_cli_output(f"cat {file}| grep -v \"#\" | wc -l")
     return data
 
 def get_fusions_data(file):
+    '''
+    (str) -> dict
+
+    Selects statistics for the fusions process from file
+
+    Parameters
+    ----------
+    - file (str): path to file to be parsed
+
+    '''
     data = {}
     data["num_fusions"] = get_cli_output(f"cat {file}| grep -v \"#\" | wc -l")
     return data
 
 def get_cns_data(file):
+    '''
+    (str) -> dict
+
+    Selects statistics for the copynumber_segmentation process from file
+
+    Parameters
+    ----------
+    - file (str): path to file to be parsed
+
+    '''
     data = {}
     data["num_cnv"] = get_cli_output(f"tail -n +2 {file} | wc -l")
     return data
@@ -108,15 +160,13 @@ def get_cns_data(file):
 
 def get_json_data(input_json):
     '''
-    (str, str) -> str
+    (dict) -> df
 
-    Returns a json object with keys as the file names abbreviated to the regex
-    specified by file_re, containing summary data.
+    Returns a pandas dataframe object containing summary data.
 
     Parameters
     ----------
     - input_json (str): file containing the paths to the vcf files to be analyzed
-    - file_re (str): regex specifying the abbreviated name
 
     '''
     processes = ["mutations", "wg_structual_variants", "mavis_structual_variants", "fusions", "copynumber_segmentation"]
@@ -151,7 +201,16 @@ def get_json_data(input_json):
 
     with open('output.json', 'w', encoding='utf-8') as file:
         json.dump(cases, file, ensure_ascii=False, indent=4)
-    
+
+    # for k, v in cases.items():
+    #     v["id"] = k
+
+    # cases = [case for case in cases.values()]
+
+    # df2 = pandas.json_normalize(cases)
+    # df2.set_index("id", inplace=True)
+    # print(df2.to_string())
+
 
 if __name__ == '__main__':
     
