@@ -20,10 +20,10 @@ def get_files(data, processes):
 
     for case_id, case in data["cases"].items():
         for process in processes:
-            if process in case.keys():
+            try:
                 files[case_id][process] = case[process]["file"]
-            else:
-                print(f"{case_id} is missing {process} file link")
+            except:
+                print(f"Analysis report generation: {case_id} is missing {process} file link")
 
     return files
 
@@ -157,8 +157,12 @@ def get_cns_data(file):
     data["num_cnv"] = get_cli_output(f"tail -n +2 {file} | wc -l")
     return data
 
+def format_dataframe(data_list):
+    df = pandas.json_normalize(data_list)
+    df.set_index("id", inplace=True)
+    return df
 
-def get_json_data(input_json):
+def parse_record(input_json):
     '''
     (dict) -> df
 
@@ -169,48 +173,51 @@ def get_json_data(input_json):
     - input_json (str): file containing the paths to the vcf files to be analyzed
 
     '''
-    processes = ["mutations", "wg_structual_variants", "mavis_structual_variants", "fusions", "copynumber_segmentation"]
+    processes = [
+        "mutations",
+        "wg_structual_variants",
+        "mavis_structual_variants",
+        "fusions",
+        "copynumber_segmentation"
+    ]
+
     process_parsers = {
         "mutations": get_mutations_data,
         "wg_structual_variants": get_wgsv_data,
         "mavis_structual_variants": get_msv_data,
         "fusions": get_fusions_data,
         "copynumber_segmentation": get_cns_data,
-        }
+    }
+    
     data = {}
 
     with open(input_json) as file:
         data = json.load(file)
     file.close()
 
-    #retval with all parsed data
-    cases = { case_id : {} for case_id in data["cases"].keys()}
-    for case in cases.keys():
-        for process in processes:
-            cases[case][process] = {}
-
-    counter = 0
+    caches = { process: [] for process in processes }
 
     files = get_files(data, processes)
 
-    for case in cases.keys():
-        print(counter)
-        for process in processes:
-            cases[case][process] = process_parsers[process](files[case][process])
-        counter = counter + 1
+    for case in data["cases"].keys():
+        for process in files[case].keys():
+            try:
+                record = process_parsers[process](files[case][process])
+                record["id"] = case
+                caches[process].append(record)
+            except:
+                print(f"Error: invalid file given for {case} in {process}")
 
-    with open('output.json', 'w', encoding='utf-8') as file:
-        json.dump(cases, file, ensure_ascii=False, indent=4)
+    # with open('output.json', 'w', encoding='utf-8') as file:
+    #     json.dump(caches, file, ensure_ascii=False, indent=4)
 
-    # for k, v in cases.items():
-    #     v["id"] = k
+    dataframes = { process: format_dataframe(caches[process]) for process in processes }
 
-    # cases = [case for case in cases.values()]
+    # for v in dataframes.values():
+    #     print(v.to_string())
 
-    # df2 = pandas.json_normalize(cases)
-    # df2.set_index("id", inplace=True)
-    # print(df2.to_string())
-
+    return dataframes
+    
 
 if __name__ == '__main__':
     
@@ -220,4 +227,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    get_json_data(args.infile)
+    parse_record(args.infile)
