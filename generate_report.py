@@ -4,78 +4,107 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from inspect import signature
 from xhtml2pdf import pisa
+import sqlite3
 
-def get_sample_ids(data_dict):
+def get_sample_ids(cursor):
     '''
     ascending list of sample ids
 
     '''
-    sample_ids = list(data_dict.keys())
-    sample_ids.sort()
-
+    sample_ids = []
+    for row in cursor.execute(
+        """
+        select id 
+        from analysis_report_fusions
+        order by id asc
+        """):
+        sample_ids.append(row[0])
+    
     return sample_ids
 
 
-def get_table_data(data_dict, id_list):
+def get_table_data(cursor, processes, table_req):
     
     table_data = {}
 
-    processes = list(list(data_dict.values())[0].keys())
-
     for process in processes:
-        table_data[process] = []
+        table_data[process] = {"header": table_req[process], "data": []}
 
-        for sample in id_list:
-            table_data[process].append(data_dict[sample][process])
-            table_data[process][-1]["id"] = sample
+        attributes = ",".join(table_req[process])
 
-    return processes, table_data
+        for row in cursor.execute(f"select {attributes} from analysis_report_{process} order by id asc"):
+            table_data[process]["data"].append(row)
+    return table_data
 
 
-def get_plot_data(data_dict, id_list, processes):
-    plots = []
-
-    for process in processes:
-        plot_data = {"ids": id_list, "calls" : []}
-        for sample_id in id_list:
-            plot_data["calls"].append(data_dict[sample_id][process]["num_calls"])
-        
-        plots.append(dict(process=process, plot=generate_plot(id_list, plot_data, process)))
-    
-    return plots
-
-def generate_plot(id_lists, plot_data, process):
+def generate_plot(plot_data, process):
     df = pd.DataFrame(plot_data, columns=["ids", "calls"])
-    print(df)
     df.plot(x="ids", y="calls", kind="bar")
-    plt.savefig(f"/home/jqian/reports/Analysis_Reports/plots/{process}_plot.png", bbox_inches="tight")
+    plt.savefig(
+        f"/.mounts/labs/gsiprojects/gsi/gsiusers/jqian/Analysis_Reports/plots/{process}_plot.png",
+        bbox_inches="tight"
+    )
 
     return f"plots/{process}_plot.png"
 
-    # environment = Environment(loader=FileSystemLoader("templates/"))
-    # results_template = environment.get_template("plot.html")
 
-    # return results_template.render(context)
+def get_plot_data(cursor, processes):
+    plots = []
 
-    # with open("sample_plot.html", "w", encoding="utf-8") as results:
-    #     results.write(results_template.render(context))
-    #     print("wrote to sample_plot_.html")
+    for process in processes:
+        plot_data = {"ids": [], "calls" : []}
+        for row in cursor.execute(f"select id, num_calls from analysis_report_{process} order by id asc"):
+            plot_data["ids"].append(row[0])
+            plot_data["calls"].append(row[1])
+        
+        plots.append(dict(process=process, plot=generate_plot(plot_data, process)))
+    
+    return plots
 
+tables = {
+    "mutations":[
+        "id",
+        "num_calls",
+        "bcf_PASS_summary_records",
+        "bcf_PASS_summary_SNPs",
+        "bcf_PASS_summary_MNPs",
+        "bcf_PASS_summary_indels",
+    ], 
+    "wg_structural_variants": [
+        "id",
+        "num_calls",
+        "bcf_PASS_summary_records",
+        "bcf_PASS_summary_SNPs",
+        "bcf_PASS_summary_MNPs",
+        "bcf_PASS_summary_indels",
+    ],
+    "mavis_structural_variants":[
+        "id",
+        "num_fusions",
+    ],
+    "fusions":[
+        "id",
+        "num_fusions",
+    ],
+    "copynumber_segmentation":[
+        "id",
+        "num_cnvs",
+    ]
+}
 
-def generate_report(input_file):
-    # processes = ["mutations","wg_structual_variants"]
+def generate_report(table_req):
+    processes = ["mutations","wg_structural_variants", "fusions", "mavis_structural_variants", "copynumber_segmentation"]
     # sections = [generate_id_list, generate_table, generate_plot]
 
     context = {}
-    data = {}
+    
+    con = sqlite3.connect("test.sl3")
+    cur = con.cursor()
 
-    with open(input_file) as file:
-        data = json.load(file)
-    file.close()
-
-    context["sample_ids"] = get_sample_ids(data)
-    context["processes"], context["table_data"] = get_table_data(data, context["sample_ids"])
-    context["plots"] = get_plot_data(data, context["sample_ids"], ["mutations", "wg_structual_variants"])
+    context["sample_ids"] = get_sample_ids(cur)
+    context["processes"] = processes
+    context["table_data"] = get_table_data(cur, processes, table_req)
+    # context["plots"] = get_plot_data(cur, processes)
 
     with open('context.json', 'w', encoding='utf-8') as file:
         json.dump(context, file, ensure_ascii=False, indent=4)
@@ -93,5 +122,8 @@ def generate_report(input_file):
         pisa.CreatePDF(
             src=contents,
             dest=out_pdf_file_handle)
+    
+    cur.close()
+    con.close()
 
-generate_report("output.json")
+generate_report(tables)

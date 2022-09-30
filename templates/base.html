@@ -39,47 +39,26 @@
         {% for process in processes %}
             <h3>Table {{ loop.index }}. Summary of {{ process }}</h3>
                 <table class="summary_table">
-                    {% if process == 'mutations' or process == 'wg_structual_variants' %}
-                        <thead>
-                            <tr>
-                            <th style="border-bottom: none;"></th>
-                            <th style="border-bottom: none;"></th>
-                            <th colspan="4" style="text-align: center;">bcf PASS</th>
-                            </tr>
-                            <tr style="padding:0px">
-                                <th style="border-top: none;">id</th>
-                                <th style="border-top: none;"># calls</th>
-                                <th>records</th>
-                                <th>SNPs</th>
-                                <th>MNPs</th>
-                                <th>indels</th>
-                            </tr>
-                        </thead>
-
-                        {% for item in table_data[process] %}
-                            <tr class="{{ loop.cycle('row_odd', 'row_even') }}">
-                                <TD> <b>{{ item.id }}</b></TD>
-                                <TD> {{ item.num_calls }} </TD>
-                                <TD>{{ item.bcf_PASS_summary.records }}</TD>
-                                <TD>{{ item.bcf_PASS_summary.SNPs }}</TD>
-                                <TD>{{ item.bcf_PASS_summary.MNPs }}</TD>
-                                <TD>{{ item.bcf_PASS_summary.indels }}</TD>
-                            </tr>
+                <thead>
+                    <tr style="padding:0px">
+                        {% for h in table_data[process]["header"] %}
+                            <th>
+                                {% if h.startswith('bcf_PASS') %}
+                                    {{ h[17:] }}
+                                {% else %}
+                                    {{ h }}
+                                {% endif %}
+                            </th>
                         {% endfor %}
-                    {% else %}
-                        <thead>
-                            <tr style="padding:0px">
-                                <th>id</th>
-                                <th>calls</th>
-                            </tr>
-                        </thead>
-                        {% for item in table_data[process] %}
-                            <tr class="{{ loop.cycle('row_odd', 'row_even') }}">
-                                <TD> <b>{{ item.id }}</b></TD>
-                                <TD> {{ item.num_calls }} </TD>
-                            </tr>
+                    </tr>
+                </thead>
+                {% for item in table_data[process]["data"] %}
+                    <tr class="{{ loop.cycle('row_odd', 'row_even') }}">
+                        {% for cell in item %}
+                            <TD>{{ cell }}</TD>
                         {% endfor %}
-                    {% endif %}
+                    </tr>
+                {% endfor %}
                 </table>
             <div style="page-break-after: always;"></div>
         {% endfor %}

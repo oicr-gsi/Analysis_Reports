@@ -160,6 +160,8 @@ def get_cns_data(file):
 def format_dataframe(data_list):
     df = pandas.json_normalize(data_list)
     df.set_index("id", inplace=True)
+    df.rename(columns=lambda x:x.replace(".", "_"), inplace=True)
+
     return df
 
 def parse_record(input_json):
@@ -208,8 +210,8 @@ def parse_record(input_json):
             except:
                 print(f"Error: invalid file given for {case} in {process}")
 
-    # with open('output.json', 'w', encoding='utf-8') as file:
-    #     json.dump(caches, file, ensure_ascii=False, indent=4)
+    with open('output.json', 'w', encoding='utf-8') as file:
+        json.dump(caches, file, ensure_ascii=False, indent=4)
 
     dataframes = { process: format_dataframe(caches[process]) for process in processes }
 
