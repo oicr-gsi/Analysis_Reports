@@ -341,7 +341,9 @@ color: black;
 
 
 
-
+@page {
+  margin: 10mm;
+}
 
 
 @page horizontal_page {
