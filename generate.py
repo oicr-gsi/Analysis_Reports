@@ -24,6 +24,7 @@ from section import (
     Mutect2Section,
     RawSeqDataSection,
     MetadataSection,
+    CallReadyAlignmentsSection,
 )
 
 from tables import Table
@@ -44,6 +45,7 @@ class Report:
         # StarFusionSection(),
         # Mutect2Section(),
         RawSeqDataSection(),
+        CallReadyAlignmentsSection(),
     ]
 
     def load_context(self):
@@ -67,11 +69,15 @@ def makepdf(html, outputfile):
 
 def generate_report():
     report = Report()
-    table = Table("IRIS.json") #initializing table data
+    table = Table("IRIS-2.json") #initializing table data
     report.load_context()
 
     with open('meta_context.json', 'w', encoding='utf-8') as file:
         json.dump(report.context, file, ensure_ascii=False, indent=4)
+    
+    # with open("IRIS-2.json") as f:
+    #     with open("input.json", "w") as input:
+    #         json.dump(json.load(f), input, indent=4)
 
     environment = Environment(loader=FileSystemLoader("templates/"))
     results_template = environment.get_template("metadata.html")
@@ -86,5 +92,6 @@ def generate_report():
 
 
 if __name__ == "__main__":
+    print("starting")
 
     generate_report()

@@ -63,8 +63,17 @@
             </table>
             <div style="page-break-after: always;"></div>
         {% endfor %}
-    {% endfor %}
 
+        <h2>{{ section }} Plots</h2>
+
+        {% for plot in sections[section].plots %}
+            <p>Figure {{ loop.index }}. Plot of {{ sections[section].plots[plot].title }}</p>
+            <img src="{{ sections[section].plots[plot].fig_path }}"></img>
+
+        {% endfor %}
+
+    
+{% endfor %}
      
    <!-- <h3>Table 1. Metadata</h3>
    <p>{{ metadata_blurb }}</p>

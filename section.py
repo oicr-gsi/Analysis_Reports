@@ -1,11 +1,9 @@
 from tables import (
     RSEMTable, 
-    SequenzaAltSolnTable,
-    SequenzaFGATable,
+    SequenzaTable,
     DellyTable,
     StarFusionTable,
     Mutect2Table,
-    Mutect2TITVStatsTable,
     BAMQC4Table,
     MetadataTable,
     RNASeqQCTable,
@@ -25,21 +23,25 @@ class Section:
         pass
 
     def load_context(self):
-        context = {}
-        context["title"] = self.title
-        context["blurb"] = self.blurb
-        context["tables"] = {}
-        for count, table in enumerate(self.tables):
-            context["tables"][count] = table.load_context()
+        context = {
+            "title": self.title,
+            "blurb": self.blurb,
+            "tables": {},
+            "plots": {},
+        }
+        for tcount, table in enumerate(self.tables):
+            context["tables"][tcount] = table.load_context()
+            for pcount, (column, plot) in enumerate(table.plots.items()):
+                context["plots"][f"{tcount}_{pcount}"] = plot.load_context(f"{table.process}_{column}")
+
         return context
 
 class RSEMSection(Section):
     def __init__(self):
-        self.title = "RSEM"
+        self.title = "Gene Expression"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        Summary metrics for normalized expression (TPM, gencode release 31)
+        \nExpression values are generated with RSEM
         """
         self.name = "rsem"
         self.tables = [
@@ -48,25 +50,22 @@ class RSEMSection(Section):
     
 class SequenzaSection(Section):
     def __init__(self):
-        self.title = "Sequenza"
+        self.title = "Copy Number Alterations"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        Summary metrics for somatic copy number alterations generated from the WG Tumour/Normal pairs.
+        Initial calls are generated with varscan, then processed with Sequenza
         """
         self.name = "sequenza"
         self.tables = [
-            SequenzaAltSolnTable(),
-            SequenzaFGATable(),
+            SequenzaTable(),
         ]
 
 class DellySection(Section):
     def __init__(self):
-        self.title = "Delly"
+        self.title = "Genomic Structural Variants"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        Summary metrics for structural variants  generated from the WG Tumour/Normal pairs.
+        Calls are generated with delly.
         """
         self.name = "delly"
         self.tables = [
@@ -75,11 +74,10 @@ class DellySection(Section):
 
 class StarFusionSection(Section):
     def __init__(self):
-        self.title = "StarFusion"
+        self.title = "Gene Fusions"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        Summary metrics for identified gene fusions.
+        Fusions are detected with STAR-fusion.
         """
         self.name = "starfusion"
         self.tables = [
@@ -88,16 +86,14 @@ class StarFusionSection(Section):
 
 class Mutect2Section(Section):
     def __init__(self):
-        self.title = "Mutect2"
+        self.title = "Mutations"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        Summary metrics for somatic mutations (snvs + indels) generated from the WG Tumour/Normal pairs.
+        Calls are generated with mutect2, and annotated with variant effect predictor.
         """
         self.name = "mutect2"
         self.tables = [
             Mutect2Table(),
-            Mutect2TITVStatsTable(),
         ]
 
 class MetadataSection(Section):
@@ -117,14 +113,24 @@ class RawSeqDataSection(Section):
     def __init__(self):
         self.title = "Raw Sequence Data"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        Samples were sequenced on one or more sequencing runs.
         """
         self.name = "raw_data"
         self.tables = [
-            # BAMQC4Table(),
-            # RNASeqQCTable(),
+            BAMQC4Table(),
+            RNASeqQCTable(),
+            # BAMQC4MergedTable(),
+            # RNASeqQCMergedTable(),
+        ]
+
+class CallReadyAlignmentsSection(Section):
+    def __init__(self):
+        self.title = "Call Ready Alignments"
+        self.blurb = """
+        All data from each sample is merged and processed to a call ready state.
+        """
+        self.name = "call_ready"
+        self.tables = [
             # BAMQC4MergedTable(),
             RNASeqQCMergedTable(),
         ]
