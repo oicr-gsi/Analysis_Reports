@@ -28,15 +28,13 @@
    <br>
    <br>
    <br>
-
-
     {% for section in sections %}
         <h2>{{ loop.index }}. {{ sections[section].title }}</h2>
         <p>{{ sections[section].blurb }}</p>
-
         {% for table in sections[section].tables %}
-        <br>        
-        <h3>Table {{ loop.index }}. {{ sections[section].tables[table].title }}</h3>
+        {% if sections[section].tables|length > 1 %}        
+            <h3>{{ sections[section].tables[table].title }}</h3>
+        {% endif %}
             <p>{{ sections[section].tables[table].blurb }}</p>
             <table id="info_table", style="font-size: 9px;">
                 <tr>
@@ -49,7 +47,12 @@
                     <tr style="page-break-inside: avoid;">       
                         {% if entry %}
                             {% for heading in sections[section].tables[table]["headings"] %}
-                                <td style="word-break:break-all;">{{ entry[heading] }}</td>
+                                {% if entry[heading] is number %}
+                                    <td>{{ "{:,}".format(entry[heading]) }}</td>
+                                {% else %}     
+                                    <td style="word-break:break-all;"> {{ entry[heading] }}</td>
+                                {% endif %}
+
                             {% endfor %}
                         {% else %}
                             <td>{{ id }}</td>
@@ -81,10 +84,6 @@
             {% endif %}                
         {% endfor %}
 
-
-
-
-    
 {% endfor %}
 </body>
 </html>

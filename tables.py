@@ -29,6 +29,7 @@ class Table:
     data = {}
     pipeline_step: str
     glossary: Dict[str,str]
+    pct_stats = set()
 
     def __init__(self, input_file):
         with open(input_file) as f:
@@ -41,7 +42,7 @@ class Table:
         select_block = ""
         for index, (key, value) in enumerate(self.columns.items()):
             indices[key] = index
-            select_block = select_block + f"\"{value}\", "
+            select_block = select_block + f"{value}, "
         return select_block[:-2], indices
 
     def add_plot_data(self, plot, val, id):
@@ -73,7 +74,7 @@ class Table:
         for case in Table.sample_ids:
             wfr = list(Table.data[case]["analysis"][self.pipeline_step][self.process].keys())[0]
             entry = {}
-            row = cur.execute( # forloop automatically ignores empty SELECTs
+            row = cur.execute(
                 f"""
                 select {select_block} from {self.source_table[0]} where "Workflow Run SWID" like '%{wfr}%';
                 """
@@ -81,15 +82,21 @@ class Table:
             entry["sample_id"] = self.get_sample_id(cur, case, wfr, "Workflow Run SWID")
             for column in self.columns.keys():
                 entry[column] = (
-                    row[indices[column]]
-                    if isinstance(row[indices[column]], str)
-                    else round(row[indices[column]], 2)
+                    row[indices[column]] * 100
+                    if column in self.pct_stats
+                    else row[indices[column]]
                 )
+                entry[column] = (
+                    entry[column]
+                    if isinstance(entry[column], str)
+                    else round(entry[column], 2)
+                )
+
                 self.add_plot_data(column, entry[column], entry["sample_id"])
             
-            for key, value in entry.items():
-                if not isinstance(value, str):
-                    entry[key] = f"{value:,}"
+            # for key, value in entry.items():
+            #     if not isinstance(value, str):
+            #         entry[key] = f"{value:,}"
             data.append(entry)
         
         cur.close()
@@ -127,19 +134,26 @@ class WGLaneLevelData(Table):
             WGLaneLevelDataColumns.InsertSizeAvg: "Mean size of the sequenced insert",
             WGLaneLevelDataColumns.MarkDupPctDup: "percent of reads marked as duplicates",
             WGLaneLevelDataColumns.TotalClusters: "Number of read pairs generated",
-            WGLaneLevelDataColumns.MappedReads: "% of reads mapping to the genomic reference",
+            WGLaneLevelDataColumns.MappedReads: "Percent of reads mapping to the genomic reference",
 
         }
         self.columns = {
-            WGLaneLevelDataColumns.CoverageDedup: "coverage deduplicated",
-            WGLaneLevelDataColumns.InsertSizeAvg: "insert size average",
-            WGLaneLevelDataColumns.MarkDupPctDup: "mark duplicates_PERCENT_DUPLICATION",
-            WGLaneLevelDataColumns.TotalClusters: "total clusters",
+            WGLaneLevelDataColumns.CoverageDedup: "\"coverage deduplicated\"",
+            WGLaneLevelDataColumns.InsertSizeAvg: "\"insert size average\"",
+            WGLaneLevelDataColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
+            WGLaneLevelDataColumns.TotalClusters: "\"total clusters\"",
+            WGLaneLevelDataColumns.MappedReads: "(1 - (CAST(\"unmapped reads meta\" as FLOAT) / CAST(\"total input reads meta\" as FLOAT)))",
         }
         self.pipeline_step = "alignments_WG.lanelevel"
         self.source_table = ["dnaseqqc_dnaseqqc_5", "bamqc4_bamqc4_5"]
         self.source_db = ["dnaseqqc", "bamqc4"]
         self.process = "bwaMem"
+        self.pct_stats = set(
+            [
+                WGLaneLevelDataColumns.MarkDupPctDup,
+                WGLaneLevelDataColumns.MappedReads,
+            ]
+        )
         self.plots = {
             WGLaneLevelDataColumns.CoverageDedup: Plot(
                 title="Coverage Depth",
@@ -188,6 +202,8 @@ class WGLaneLevelData(Table):
         select_block, indices = self.get_select()
         data = []
 
+        print(select_block)
+
         for id in Table.sample_ids:
             lims_keys = []
             for key in Table.data[id][self.lib_type][self.tiss_origin].keys():
@@ -209,26 +225,23 @@ class WGLaneLevelData(Table):
                         select {select_block} from {self.source_table[1]} where "Pinery Lims ID" like '%{lims}%';
                         """).fetchall()
                 for row in rows:
-
                     entry[WGLaneLevelDataColumns.SampleID], entry[WGLaneLevelDataColumns.Lane] = self.get_sample_id(id, lims)
                     for column in self.columns.keys():
                         entry[column] = (
-                            row[indices[column]]
-                            if isinstance(row[indices[column]], str)
-                            else round(row[indices[column]], 2)
+                            row[indices[column]] * 100
+                            if column in self.pct_stats
+                            else row[indices[column]]
+                        )
+                        entry[column] = (
+                            entry[column]
+                            if isinstance(entry[column], str)
+                            else round(entry[column], 2)
                         )
                         self.add_plot_data(column, entry[column], entry[WGLaneLevelDataColumns.SampleID])                
-                for row in target_cur.execute(
-                f"""
-                    select (1 - (CAST("unmapped reads meta" as FLOAT) /CAST("total input reads meta" as FLOAT))) * 100 from {self.source_table[src_table_index]} where "Pinery Lims ID" = '{lims}';
-                    """
-                ):
-                    entry[WGLaneLevelDataColumns.MappedReads] = round(row[0], 2)
-                    self.add_plot_data(WGLaneLevelDataColumns.MappedReads, row[0], entry["sample_id"])
                 
-                for key, value in entry.items():
-                    if not isinstance(value, str):
-                        entry[key] = f"{value:,}"
+                # for key, value in entry.items():
+                #     if not isinstance(value, str):
+                #         entry[key] = f"{value:,}"
                 data.append(entry)
 
         dnaseqqc_cur.close()
@@ -256,17 +269,27 @@ class WGCallReadyData(Table):
             WGCallReadyDataColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
             WGCallReadyDataColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
             WGCallReadyDataColumns.TotalClusters: "Number of read pairs generated",
-            WGCallReadyDataColumns.MappedReads: "% of reads mapping to the genomic reference",
+            WGCallReadyDataColumns.MappedReads: "Percent of reads mapping to the genomic reference",
             WGCallReadyDataColumns.NumLimsKeys: "Number of lanes of sequencing merged to call ready",
         }
         self.columns = {
-            WGCallReadyDataColumns.CoverageDedup: "coverage deduplicated",
-            WGCallReadyDataColumns.MarkDupPctDup: "mark duplicates_PERCENT_DUPLICATION",
-            WGCallReadyDataColumns.TotalClusters: "total clusters",
+            WGCallReadyDataColumns.CoverageDedup: "\"coverage deduplicated\"",
+            WGCallReadyDataColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
+            WGCallReadyDataColumns.TotalClusters: "\"total clusters\"",
+            WGCallReadyDataColumns.MappedReads: """
+            (1 - CAST("unmapped reads meta" as FLOAT)
+            /CAST("total input reads meta" as FLOAT))
+            """,
         }
         self.source_table = ["bamqc4merged_bamqc4merged_5"]
         self.source_db = "bamqc4merged"
         self.process = "bamMergePreprocessing_by_tumor_group"
+        self.pct_stats = set(
+            [
+                WGCallReadyDataColumns.MarkDupPctDup,
+                WGCallReadyDataColumns.MappedReads,
+            ]
+        )
         self.plots = {
             WGCallReadyDataColumns.CoverageDedup: Plot(
                 "Coverage Depth",
@@ -317,25 +340,22 @@ class WGCallReadyData(Table):
             
             for column in self.columns.keys():
                 entry[column] = (
-                    row[indices[column]]
-                    if isinstance(row[indices[column]], str)
-                    else round(row[indices[column]], 2)
+                    row[indices[column]] * 100
+                    if column in self.pct_stats
+                    else row[indices[column]]
+                )
+                entry[column] = (
+                    entry[column]
+                    if isinstance(entry[column], str)
+                    else round(entry[column], 2)
                 )
                 self.add_plot_data(column, entry[column], entry["sample_id"])
-            
-            row = cur.execute(
-                f"""
-                    select (1 - CAST("unmapped reads meta" as FLOAT) /CAST("total input reads meta" as FLOAT)) * 100 from {self.source_table[0]} where "Merged Pinery Lims ID" = '{lims}';
-                    """
-                ).fetchall()[0]
-            entry[WGCallReadyDataColumns.MappedReads] = round(row[0], 2)
-            self.add_plot_data(WGCallReadyDataColumns.MappedReads, entry[WGCallReadyDataColumns.MappedReads], entry[WGCallReadyDataColumns.SampleID]) 
-
+                
             entry[WGCallReadyDataColumns.NumLimsKeys] = len(lims_keys)
 
-            for key, value in entry.items():
-                if not isinstance(value, str):
-                    entry[key] = f"{value:,}"   
+            # for key, value in entry.items():
+            #     if not isinstance(value, str):
+            #         entry[key] = f"{value:,}"   
             data.append(entry)
         
         cur.close()
@@ -356,13 +376,13 @@ class DellyTable(Table):
             DellyTableColumns.NumINV: "Inversions",
         }
         self.columns = {
-            DellyTableColumns.NumCalls: "num_calls",
-            DellyTableColumns.NumPASS: "num_PASS",
-            DellyTableColumns.NumBND: "num_BND",
-            DellyTableColumns.NumDEL: "num_DEL",
-            DellyTableColumns.NumDUP: "num_DUP",
-            DellyTableColumns.NumINS: "num_INS",
-            DellyTableColumns.NumINV: "num_INV",
+            DellyTableColumns.NumCalls: "\"num_calls\"",
+            DellyTableColumns.NumPASS: "\"num_PASS\"",
+            DellyTableColumns.NumBND: "\"num_BND\"",
+            DellyTableColumns.NumDEL: "\"num_DEL\"",
+            DellyTableColumns.NumDUP: "\"num_DUP\"",
+            DellyTableColumns.NumINS: "\"num_INS\"",
+            DellyTableColumns.NumINV: "\"num_INV\"",
         }
         self.pipeline_step = "calls.structuralvariants"
         self.source_table = ["analysis_delly_analysis_delly_1"]
@@ -441,7 +461,7 @@ class Mutect2Table(Table):
             Mutect2TableColumns.TITVRatio: "Ti/Tv",
         }
         self.glossary = {
-            Mutect2TableColumns.NumCalls: "MThe number of somatic mutation calls (snvs + indels)  identified by mutect2",
+            Mutect2TableColumns.NumCalls: "The number of somatic mutation calls (snvs + indels)  identified by mutect2",
             Mutect2TableColumns.NumPASS: "The number of somatic mutation calls marked as PASS",
             Mutect2TableColumns.NumSNPs: "The number of somatic mutation calls marked as PASS",
             Mutect2TableColumns.NumIndels: "The number of structural variant calls marked as PASS",
@@ -487,18 +507,32 @@ class RNASeqQCTable(Table):
         self.glossary = {
             RNASeqQCTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
             RNASeqQCTableColumns.TotalClusters: "Number of read pairs generated",
-            RNASeqQCTableColumns.MappedReads: "% of reads mapping to the genomic reference",
+            RNASeqQCTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
             RNASeqQCTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
 
         }
         self.columns = {
-            RNASeqQCTableColumns.PctCodingBases: "PCT_CODING_BASES",
-            RNASeqQCTableColumns.TotalClusters: "total clusters",
+            RNASeqQCTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
+            RNASeqQCTableColumns.TotalClusters: "\"total clusters\"",
+            RNASeqQCTableColumns.MappedReads: """
+                (1 - CAST(\"unmapped reads\" as FLOAT)
+                /CAST(\"total reads\" as FLOAT))
+            """,
+            RNASeqQCTableColumns.RRNAContamination: """
+                (CAST("rrna contamination properly paired" as FLOAT)
+                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT))
+            """,
         }
         self.source_table = ["rnaseqqc2_rnaseqqc2_2"]
         self.source_db = "rnaseqqc2"
         self.process = "star_lane_level"
         self.pipeline_step = "alignments_WT.lanelevel"
+        self.pct_stats = set(
+            [
+                RNASeqQCTableColumns.MappedReads,
+                RNASeqQCTableColumns.RRNAContamination,
+            ]
+        )
         self.plots = {
             RNASeqQCTableColumns.PctCodingBases: Plot(
                 title="Percent Coding",
@@ -540,6 +574,8 @@ class RNASeqQCTable(Table):
         select_block, indices = self.get_select()
         data = []
 
+        print(select_block)
+
         for id in Table.sample_ids:
             lims_keys = []
             for key in Table.data[id]["WT"]["Tumour"].keys():
@@ -555,37 +591,20 @@ class RNASeqQCTable(Table):
                     entry[RNASeqQCTableColumns.SampleID], entry[RNASeqQCTableColumns.Lane] = self.get_sample_id(id, lims)
                     for column in self.columns.keys():
                         entry[column] = (
-                            row[indices[column]]
-                            if isinstance(row[indices[column]], str)
-                            else round(row[indices[column]], 2)
+                            row[indices[column]] * 100
+                            if column in self.pct_stats
+                            else row[indices[column]]
+                        )
+                        entry[column] = (
+                            entry[column]
+                            if isinstance(entry[column], str)
+                            else round(entry[column], 2)
                         )
                         self.add_plot_data(column, entry[column], entry["sample_id"])
-                        entry[column] = f"{entry[column]:,}"                        
 
-                for row in cur.execute(
-                    f"""
-                        select (1 - CAST("unmapped reads" as FLOAT) /CAST("total reads" as FLOAT)) * 100
-                        from {self.source_table[0]}
-                        where "Pinery Lims ID" like '%{lims}%';
-                        """
-                    ):
-                    entry[RNASeqQCTableColumns.MappedReads] = round(row[0], 2)
-                    self.add_plot_data(RNASeqQCTableColumns.MappedReads, row[0], entry["sample_id"])  
-
-                for row in cur.execute(
-                f"""
-                    select
-                    (CAST("rrna contamination properly paired" as FLOAT)
-                    /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT)) * 100
-                    from {self.source_table[0]}
-                    where "Pinery Lims ID" like '%{lims}%';
-                    """
-                ):
-                    entry[RNASeqQCTableColumns.RRNAContamination] = round(row[0], 2)
-                    self.add_plot_data(RNASeqQCTableColumns.RRNAContamination, row[0], entry["sample_id"])  
-                for key, value in entry.items():
-                    if not isinstance(value, str):
-                        entry[key] = f"{value:,}"
+                # for key, value in entry.items():
+                #     if not isinstance(value, str):
+                #         entry[key] = f"{value:,}"
                 data.append(entry)
 
         cur.close()
@@ -605,17 +624,30 @@ class RNASeqQCMergedTable(Table):
             RNASeqQCMergedTableColumns.NumLimsKeys: "Lanes Sequenced",
         }
         self.glossary = {
-            RNASeqQCMergedTableColumns.PctCodingBases: "PPercentage of bases mapping to the coding regions of the genome",
+            RNASeqQCMergedTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
             RNASeqQCMergedTableColumns.TotalClusters: "	Number of read pairs generated",
-            RNASeqQCMergedTableColumns.MappedReads: "% of reads mapping to the genomic reference",
+            RNASeqQCMergedTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
             RNASeqQCMergedTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
             RNASeqQCMergedTableColumns.NumLimsKeys: "Number of lanes of sequencing merged to call ready",
         }
         self.columns = {
-            RNASeqQCMergedTableColumns.PctCodingBases: "PCT_CODING_BASES",
-            RNASeqQCMergedTableColumns.TotalClusters: "total clusters",
-
+            RNASeqQCMergedTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
+            RNASeqQCMergedTableColumns.TotalClusters: "\"total clusters\"",
+            RNASeqQCMergedTableColumns.MappedReads: """
+                (1 - CAST("unmapped reads" as FLOAT)
+                /CAST("total reads" as FLOAT))
+            """,
+            RNASeqQCMergedTableColumns.RRNAContamination: """
+                (CAST("rrna contamination properly paired" as FLOAT)
+                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT))
+            """,
         }
+        self.pct_stats = set(
+            [
+                RNASeqQCMergedTableColumns.MappedReads,
+                RNASeqQCMergedTableColumns.RRNAContamination,
+            ]
+        )
         self.pipeline_step = "alignments_WT.callready"
         self.source_table = ["rnaseqqc2merged_rnaseqqc2merged_2"]
         self.source_db = "rnaseqqc2merged"
@@ -644,11 +676,6 @@ class RNASeqQCMergedTable(Table):
                 y_axis="rRNA Contamination",
                 is_pct=True,
             ),
-            RNASeqQCMergedTableColumns.NumLimsKeys: Plot(
-                title="Lanes Sequenced",
-                x_axis="Sample ID",
-                y_axis="Lanes Sequenced",
-            )
         }
 
     def get_data(self):
@@ -663,46 +690,30 @@ class RNASeqQCMergedTable(Table):
             limskeys.sort()
             lims = "[\"" + "\", \"".join(limskeys) + "\"]"
 
-            # print(id, lims)
             entry = {}
-            for row in cur.execute( # forloop automatically ignores empty SELECTs
+            for row in cur.execute(
                 f"""
                 select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  = '{lims}';
                 """):
                 entry["sample_id"] = self.get_sample_id(cur, id, lims, "Merged Pinery Lims ID")
                 for column in self.columns.keys():
                     entry[column] = (
-                        row[indices[column]]
-                        if isinstance(row[indices[column]], str)
-                        else round(row[indices[column]], 2)
+                        row[indices[column]] * 100
+                        if column in self.pct_stats
+                        else row[indices[column]]
+                    )
+                    entry[column] = (
+                        entry[column]
+                        if isinstance(entry[column], str)
+                        else round(entry[column], 2)
                     )
                     self.add_plot_data(column, entry[column], entry[RNASeqQCMergedTableColumns.SampleID]) 
 
-            for row in cur.execute(
-                f"""
-                    select (1 - CAST("unmapped reads" as FLOAT) /CAST("total reads" as FLOAT)) * 100 from {self.source_table[0]} where "Merged Pinery Lims ID" = '{lims}';
-                    """
-                ):
-                entry[RNASeqQCMergedTableColumns.MappedReads] = round(row[0], 2)
-                self.add_plot_data(RNASeqQCMergedTableColumns.MappedReads, entry[RNASeqQCMergedTableColumns.MappedReads], entry[RNASeqQCMergedTableColumns.SampleID]) 
-
-            for row in cur.execute(
-               f"""
-                select
-                (CAST("rrna contamination properly paired" as FLOAT)
-                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT)) * 100
-                from {self.source_table[0]}
-                where "Merged Pinery Lims ID" = '{lims}';
-                """
-            ):
-                entry[RNASeqQCMergedTableColumns.RRNAContamination] = round(row[0], 2)
-                self.add_plot_data(RNASeqQCMergedTableColumns.RRNAContamination, entry[RNASeqQCMergedTableColumns.RRNAContamination], entry[RNASeqQCMergedTableColumns.SampleID]) 
-            
             entry[RNASeqQCMergedTableColumns.NumLimsKeys] = len(limskeys)
-            self.add_plot_data(RNASeqQCMergedTableColumns.NumLimsKeys, entry[RNASeqQCMergedTableColumns.NumLimsKeys], entry[RNASeqQCMergedTableColumns.SampleID]) 
-            for key, value in entry.items():
-                if not isinstance(value, str):
-                    entry[key] = f"{value:,}"
+            
+            # for key, value in entry.items():
+            #     if not isinstance(value, str):
+            #         entry[key] = f"{value:,}"
             data.append(entry)
         
         cur.close()
@@ -729,12 +740,17 @@ class RSEMTable(Table):
             RSEMTableColumns.Q0_95: "95th percentile of the Transcripts per Million score",
         }
         self.columns = {
-            RSEMTableColumns.Total: "total",
-            RSEMTableColumns.PctNonZero: "pct_non_zero",
-            RSEMTableColumns.Q0_05: "Q0.05",
-            RSEMTableColumns.Q0_5: "Q0.5",
-            RSEMTableColumns.Q0_95: "Q0.95",
+            RSEMTableColumns.Total: "\"total\"",
+            RSEMTableColumns.PctNonZero: "\"pct_non_zero\"",
+            RSEMTableColumns.Q0_05: "\"Q0.05\"",
+            RSEMTableColumns.Q0_5: "\"Q0.5\"",
+            RSEMTableColumns.Q0_95: "\"Q0.95\"",
         }
+        self.pct_stats = set(
+            [
+                RSEMTableColumns.PctNonZero,
+            ]
+        )
         self.pipeline_step = "calls.expression"
         self.source_table = ["analysis_rsem_analysis_rsem_1"]
         self.source_db = "analysis_rsem"
@@ -769,14 +785,18 @@ class SequenzaTable(Table):
             SequenzaTableColumns.FGA: "Fraction of the genome altered (gamma = 500)"
         }
         self.columns = {
-            SequenzaTableColumns.Cellularity: "cellularity",
-            SequenzaTableColumns.Ploidy: "ploidy",
-            # SequenzaTableColumns.FGA: "fga" this column is added manually
+            SequenzaTableColumns.Cellularity: "\"cellularity\"",
+            SequenzaTableColumns.Ploidy: "\"ploidy\"",
         }
         self.pipeline_step = "calls.copynumber"
         self.source_table = ["analysis_sequenza_analysis_sequenza_alternative_solutions_1", "analysis_sequenza_analysis_sequenza_gamma_500_fga_1"]
         self.source_db = "analysis_sequenza"
         self.process = "sequenza_by_tumor_group"
+        self.pct_stats = set(
+            [
+               SequenzaTableColumns.FGA, 
+            ]
+        )
         self.plots = {
             SequenzaTableColumns.Cellularity: Plot(
                 title="Cellularity",
@@ -804,7 +824,7 @@ class SequenzaTable(Table):
             wfr = list(Table.data[id]["analysis"][self.pipeline_step][self.process].keys())[0]
 
             entry = {}
-            row = cur.execute( # forloop automatically ignores empty SELECTs
+            row = cur.execute(
                 f"""
                 select {select_block} from {self.source_table[0]} where "Workflow Run SWID" like '%{wfr}%' and gamma = 500;
                 """
@@ -813,9 +833,14 @@ class SequenzaTable(Table):
             entry["sample_id"] = self.get_sample_id(cur, id, wfr, "Workflow Run SWID")
             for column in self.columns.keys():
                 entry[column] = (
-                    row[indices[column]]
-                    if isinstance(row[indices[column]], str)
-                    else round(row[indices[column]], 2)
+                    row[indices[column]] * 100
+                    if column in self.pct_stats
+                    else row[indices[column]]
+                )
+                entry[column] = (
+                    entry[column]
+                    if isinstance(entry[column], str)
+                    else round(entry[column], 2)
                 )
                 self.add_plot_data(column, entry[column], entry["sample_id"])
 
@@ -827,9 +852,10 @@ class SequenzaTable(Table):
             ).fetchall()[0]
             entry[SequenzaTableColumns.FGA] = round(row[0],2)
             self.add_plot_data(SequenzaTableColumns.FGA, row[0], entry["sample_id"])
-            for key, value in entry.items():
-                if not isinstance(value, str):
-                    entry[key] = f"{value:,}"
+
+            # for key, value in entry.items():
+            #     if not isinstance(value, str):
+            #         entry[key] = f"{value:,}"
             data.append(entry)
         
         cur.close()
@@ -848,7 +874,7 @@ class StarFusionTable(Table):
             StarFusionTableColumns.NumRecords: "Number of gene fusions identified by StarFusion",
         }
         self.columns = {
-            StarFusionTableColumns.NumRecords: "num_records",
+            StarFusionTableColumns.NumRecords: "\"num_records\"",
         }
         self.pipeline_step = "calls.fusions"
         self.source_table = ["analysis_starfusion_analysis_starfusion_1"]

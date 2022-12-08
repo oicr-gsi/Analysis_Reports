@@ -41,8 +41,8 @@ class Report:
     header = HeaderSection()
     sections = [
         MetadataSection(),
-        CallReadyAlignmentsSection(),
         RawSeqDataSection(),
+        CallReadyAlignmentsSection(),
         Mutect2Section(),
         SequenzaSection(),
         DellySection(),
@@ -70,6 +70,10 @@ def makepdf(html, outputfile):
     htmldoc = HTML(string=html, base_url=__file__)
     htmldoc.write_pdf(outputfile, stylesheets=[CSS('./static/css/style.css')], presentational_hints=True)
 
+
+def thousands_separator(value):
+    return f"{value:,.2f}"
+
 def generate_report():
     report = Report()
     table = Table("IRIS-3.json") #initializing table data
@@ -78,20 +82,22 @@ def generate_report():
     with open('meta_context.json', 'w', encoding='utf-8') as file:
         json.dump(report.context, file, ensure_ascii=False, indent=4)
     
-    with open("IRIS-3.json") as f:
-        with open("input.json", "w") as input:
-            json.dump(json.load(f), input, indent=4)
+    # with open("IRIS-3.json") as f:
+    #     with open("input.json", "w") as input:
+    #         json.dump(json.load(f), input, indent=4)
 
     environment = Environment(loader=FileSystemLoader("templates/"))
+    # environment.filters["thousands_separator"] = thousands_separator
     results_template = environment.get_template("metadata.html")
 
     contents = results_template.render(report.context)
 
-    with open("meta_report.html", "w", encoding="utf-8") as results:
-        results.write(contents)
-        print("wrote to sample_report.html")
+    # with open("meta_report.html", "w", encoding="utf-8") as results:
+    #     results.write(contents)
+    #     print("wrote to sample_report.html")
     
     makepdf(contents, "my_report.pdf")
+    print("created report my_report.pdf")
 
 
 if __name__ == "__main__":
