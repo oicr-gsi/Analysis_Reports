@@ -25,6 +25,7 @@ from section import (
     RawSeqDataSection,
     MetadataSection,
     CallReadyAlignmentsSection,
+    HeaderSection,
 )
 
 from tables import Table
@@ -36,19 +37,21 @@ db = f"/.mounts/labs/gsiprojects/gsi/gsiusers/jqian/gsi-qc-etl/gsiqcetl/"
 class Report:
     data = {}
     sample_ids = []
-    context = {"sections":{}}
+    context = {"sections":{}, "header": {}}
+    header = HeaderSection()
     sections = [
-        # MetadataSection(),
-        # RSEMSection(),
-        # SequenzaSection(),
-        # DellySection(),
-        # StarFusionSection(),
-        # Mutect2Section(),
-        RawSeqDataSection(),
+        MetadataSection(),
         CallReadyAlignmentsSection(),
+        RawSeqDataSection(),
+        Mutect2Section(),
+        SequenzaSection(),
+        DellySection(),
+        RSEMSection(),
+        StarFusionSection(),
     ]
 
     def load_context(self):
+        Report.context["header"] = self.header.load_context()
         for section in self.sections:
             Report.context["sections"][section.name] = section.load_context()
 
@@ -69,15 +72,15 @@ def makepdf(html, outputfile):
 
 def generate_report():
     report = Report()
-    table = Table("IRIS-2.json") #initializing table data
+    table = Table("IRIS-3.json") #initializing table data
     report.load_context()
 
     with open('meta_context.json', 'w', encoding='utf-8') as file:
         json.dump(report.context, file, ensure_ascii=False, indent=4)
     
-    # with open("IRIS-2.json") as f:
-    #     with open("input.json", "w") as input:
-    #         json.dump(json.load(f), input, indent=4)
+    with open("IRIS-3.json") as f:
+        with open("input.json", "w") as input:
+            json.dump(json.load(f), input, indent=4)
 
     environment = Environment(loader=FileSystemLoader("templates/"))
     results_template = environment.get_template("metadata.html")

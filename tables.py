@@ -9,15 +9,15 @@ from table_columns import (
     StarFusionTableColumns,
     MetadataTableColumns,
     RNASeqQCTableColumns,
-    BAMQC4TableColumns,
-    BAMQC4MergedTableColumns,
+    WGLaneLevelDataColumns,
+    WGCallReadyDataColumns,
     RNASeqQCMergedTableColumns,
 )
 from plot import Plot
 
 class Table:
     base_db_path = "/scratch2/groups/gsi/staging/qcetl_v1/"
-    title = ""
+    title: str
     blurb = ""
     headings: Dict[str,str]
     columns: Dict[str, int]
@@ -28,6 +28,7 @@ class Table:
     plots = {}
     data = {}
     pipeline_step: str
+    glossary: Dict[str,str]
 
     def __init__(self, input_file):
         with open(input_file) as f:
@@ -51,7 +52,15 @@ class Table:
         for plot in self.plots.values():
             plot.generate_plot(self.process)
     
-
+    def get_sample_id(self, cur, case, swid, pk, table_index=0):
+        row = cur.execute(
+            f"""
+            select "Tissue Type", "Tissue Origin", "Library Design", "Group ID"
+            from {self.source_table[table_index]}
+            where "{pk}" like '%{swid}%';
+            """
+        ).fetchall()[0]
+        return f"{case}_{row[0]}_{row[1]}_{row[2]}_{row[3]}"
 
     
     def get_data(self):
@@ -61,22 +70,26 @@ class Table:
         select_block, indices = self.get_select()
         data = []
 
-        for id in Table.sample_ids:
-            wfr = list(Table.data[id]["analysis"][self.pipeline_step][self.process].keys())[0]
+        for case in Table.sample_ids:
+            wfr = list(Table.data[case]["analysis"][self.pipeline_step][self.process].keys())[0]
             entry = {}
             row = cur.execute( # forloop automatically ignores empty SELECTs
                 f"""
-                select {select_block} from {self.source_table} where "Workflow Run SWID" like '%{wfr}%';
+                select {select_block} from {self.source_table[0]} where "Workflow Run SWID" like '%{wfr}%';
                 """
             ).fetchall()[0]
-            entry["sample_id"] = id
+            entry["sample_id"] = self.get_sample_id(cur, case, wfr, "Workflow Run SWID")
             for column in self.columns.keys():
                 entry[column] = (
                     row[indices[column]]
                     if isinstance(row[indices[column]], str)
                     else round(row[indices[column]], 2)
                 )
-                self.add_plot_data(column, entry[column], id)
+                self.add_plot_data(column, entry[column], entry["sample_id"])
+            
+            for key, value in entry.items():
+                if not isinstance(value, str):
+                    entry[key] = f"{value:,}"
             data.append(entry)
         
         cur.close()
@@ -90,37 +103,81 @@ class Table:
             "headings": self.headings,
             "data": self.get_data(),
             "blurb": self.blurb,
+            "glossary": self.glossary,
         }
         return context
 
-class BAMQC4Table(Table):
-    def __init__(self):
-        self.title = "BAMQC4"
-        self.blurb = """
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-            Curabitur sit amet commodo lorem.
-            Vivamus mollis mauris urna, eget volutpat ex pharetra vel.
-            Suspendisse ultrices commodo feugiat.
-            """
+class WGLaneLevelData(Table):
+    def __init__(self, title, lib_type, tiss_origin, blurb=""):
+        self.title = title
+        self.blurb = blurb
+        self.lib_type = lib_type
+        self.tiss_origin = tiss_origin
         self.headings = {
-            BAMQC4TableColumns.SampleID: "Sample ID",
-            BAMQC4TableColumns.CoverageDedup: "Coverage Depth",
-            BAMQC4TableColumns.InsertSizeAvg: "Insert Size",
-            BAMQC4TableColumns.MarkDupPctDup: "Duplication",
-            BAMQC4TableColumns.TotalClusters: "Reads Pairs",
-            BAMQC4TableColumns.MappedReads: "Mapped Reads",
+            WGLaneLevelDataColumns.SampleID: "Sample ID",
+            WGLaneLevelDataColumns.Lane: "Lane",
+            WGLaneLevelDataColumns.CoverageDedup: "Coverage Depth",
+            WGLaneLevelDataColumns.InsertSizeAvg: "Insert Size",
+            WGLaneLevelDataColumns.MarkDupPctDup: "Duplication",
+            WGLaneLevelDataColumns.TotalClusters: "Read Pairs",
+            WGLaneLevelDataColumns.MappedReads: "Mapped Reads",
+        }
+        self.glossary = {
+            WGLaneLevelDataColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
+            WGLaneLevelDataColumns.InsertSizeAvg: "Mean size of the sequenced insert",
+            WGLaneLevelDataColumns.MarkDupPctDup: "percent of reads marked as duplicates",
+            WGLaneLevelDataColumns.TotalClusters: "Number of read pairs generated",
+            WGLaneLevelDataColumns.MappedReads: "% of reads mapping to the genomic reference",
+
         }
         self.columns = {
-            BAMQC4TableColumns.CoverageDedup: "coverage deduplicated",
-            BAMQC4TableColumns.InsertSizeAvg: "insert size average",
-            BAMQC4TableColumns.MarkDupPctDup: "mark duplicates_PERCENT_DUPLICATION",
-            BAMQC4TableColumns.TotalClusters: "total clusters",
+            WGLaneLevelDataColumns.CoverageDedup: "coverage deduplicated",
+            WGLaneLevelDataColumns.InsertSizeAvg: "insert size average",
+            WGLaneLevelDataColumns.MarkDupPctDup: "mark duplicates_PERCENT_DUPLICATION",
+            WGLaneLevelDataColumns.TotalClusters: "total clusters",
         }
         self.pipeline_step = "alignments_WG.lanelevel"
         self.source_table = ["dnaseqqc_dnaseqqc_5", "bamqc4_bamqc4_5"]
         self.source_db = ["dnaseqqc", "bamqc4"]
         self.process = "bwaMem"
-        self.plots = {}
+        self.plots = {
+            WGLaneLevelDataColumns.CoverageDedup: Plot(
+                title="Coverage Depth",
+                x_axis="Sample ID",
+                y_axis="Coverage Depth",
+            ),
+            WGLaneLevelDataColumns.InsertSizeAvg: Plot(
+                title="Insert Size",
+                x_axis="Sample ID",
+                y_axis="Insert Size",
+            ),
+            WGLaneLevelDataColumns.MarkDupPctDup: Plot(
+                title="Duplication",
+                x_axis="Sample ID",
+                y_axis="Duplication",
+                is_pct=True,
+            ),
+            WGLaneLevelDataColumns.TotalClusters: Plot(
+                title="Read Pairs",
+                x_axis="Sample ID",
+                y_axis="Read Pairs",
+            ),
+            WGLaneLevelDataColumns.MappedReads: Plot(
+                title="Mapped Reads",
+                x_axis="Sample ID",
+                y_axis="Mapped Reads",
+                is_pct=True,
+            ),
+
+        }
+
+
+    def get_sample_id(self, case, swid):
+        lims_lane_mapping = Table.data[case][self.lib_type][self.tiss_origin]
+        for id, value in lims_lane_mapping.items():
+            if swid in value.keys():
+                return id, value[swid]["run"]
+        raise Exception("There is no Sample ID associated with the limkey")
 
     def get_data(self):
         dnaseqqc_con = sqlite3.connect(self.base_db_path + self.source_db[0] + "/latest")
@@ -132,10 +189,9 @@ class BAMQC4Table(Table):
         data = []
 
         for id in Table.sample_ids:
-            lims_keys = [
-                Table.data[id]["analysis"][self.pipeline_step][self.process][key]["limkeys"]
-                for key in Table.data[id]["analysis"][self.pipeline_step][self.process].keys()
-            ]
+            lims_keys = []
+            for key in Table.data[id][self.lib_type][self.tiss_origin].keys():
+                lims_keys = lims_keys + list(Table.data[id][self.lib_type][self.tiss_origin][key].keys())
 
             for lims in lims_keys:
                 target_cur = dnaseqqc_cur
@@ -143,32 +199,36 @@ class BAMQC4Table(Table):
                 entry = {}
                 rows = target_cur.execute(
                     f"""
-                    select {select_block} from {self.source_table[0]} where "Pinery Lims ID" = '{lims}';
+                    select {select_block} from {self.source_table[0]} where "Pinery Lims ID" like '%{lims}%';
                     """).fetchall()
                 if 0 == len(rows):
                     target_cur = bamqc4_cur
                     src_table_index = 1
                     rows = target_cur.execute(
                         f"""
-                        select {select_block} from {self.source_table[1]} where "Pinery Lims ID" = '{lims}';
+                        select {select_block} from {self.source_table[1]} where "Pinery Lims ID" like '%{lims}%';
                         """).fetchall()
                 for row in rows:
 
-                    entry["sample_id"] = id
+                    entry[WGLaneLevelDataColumns.SampleID], entry[WGLaneLevelDataColumns.Lane] = self.get_sample_id(id, lims)
                     for column in self.columns.keys():
                         entry[column] = (
                             row[indices[column]]
                             if isinstance(row[indices[column]], str)
                             else round(row[indices[column]], 2)
                         )
-                        self.add_plot_data(column, entry[column], id)                   
+                        self.add_plot_data(column, entry[column], entry[WGLaneLevelDataColumns.SampleID])                
                 for row in target_cur.execute(
                 f"""
-                    select (CAST("mapped reads" as FLOAT) /CAST("total reads" as FLOAT)) from {self.source_table[src_table_index]} where "Pinery Lims ID" = '{lims}';
+                    select (1 - (CAST("unmapped reads meta" as FLOAT) /CAST("total input reads meta" as FLOAT))) * 100 from {self.source_table[src_table_index]} where "Pinery Lims ID" = '{lims}';
                     """
                 ):
-                    entry[BAMQC4TableColumns.MappedReads] = row[0]
-                    self.add_plot_data(BAMQC4TableColumns.MappedReads, row[0], id)
+                    entry[WGLaneLevelDataColumns.MappedReads] = round(row[0], 2)
+                    self.add_plot_data(WGLaneLevelDataColumns.MappedReads, row[0], entry["sample_id"])
+                
+                for key, value in entry.items():
+                    if not isinstance(value, str):
+                        entry[key] = f"{value:,}"
                 data.append(entry)
 
         dnaseqqc_cur.close()
@@ -178,30 +238,59 @@ class BAMQC4Table(Table):
 
         return data
 
-class BAMQC4MergedTable(Table):
-    def __init__(self):
-        self.title = "BAMQC4Merged"
-        self.blurb = """
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-            Curabitur sit amet commodo lorem.
-            Vivamus mollis mauris urna, eget volutpat ex pharetra vel.
-            Suspendisse ultrices commodo feugiat.
-            """
+class WGCallReadyData(Table):
+    def __init__(self, title, lib_type, tiss_origin, blurb=""):
+        self.title = title
+        self.blurb = blurb
+        self.lib_type = lib_type
+        self.tiss_origin = tiss_origin
         self.headings = {
-            BAMQC4MergedTableColumns.SampleID: "Sample ID",
-            BAMQC4MergedTableColumns.CoverageDedup: "Coverage Depth",
-            BAMQC4MergedTableColumns.MarkDupPctDup: "Duplication",
-            BAMQC4MergedTableColumns.TotalClusters: "Reads Pairs",
-            # BAMQC4MergedTableColumns.MappedReads: "Mapped Reads",
+            WGCallReadyDataColumns.SampleID: "Sample ID",
+            WGCallReadyDataColumns.CoverageDedup: "Coverage Depth",
+            WGCallReadyDataColumns.MarkDupPctDup: "Duplication",
+            WGCallReadyDataColumns.TotalClusters: "Read Pairs",
+            WGCallReadyDataColumns.MappedReads: "Mapped Reads",
+            WGCallReadyDataColumns.NumLimsKeys: "Lanes Sequenced",
+        }
+        self.glossary = {
+            WGCallReadyDataColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
+            WGCallReadyDataColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
+            WGCallReadyDataColumns.TotalClusters: "Number of read pairs generated",
+            WGCallReadyDataColumns.MappedReads: "% of reads mapping to the genomic reference",
+            WGCallReadyDataColumns.NumLimsKeys: "Number of lanes of sequencing merged to call ready",
         }
         self.columns = {
-            BAMQC4MergedTableColumns.CoverageDedup: "coverage deduplicated",
-            BAMQC4MergedTableColumns.MarkDupPctDup: "mark duplicates_PERCENT_DUPLICATION",
-            BAMQC4MergedTableColumns.TotalClusters: "total clusters",
+            WGCallReadyDataColumns.CoverageDedup: "coverage deduplicated",
+            WGCallReadyDataColumns.MarkDupPctDup: "mark duplicates_PERCENT_DUPLICATION",
+            WGCallReadyDataColumns.TotalClusters: "total clusters",
         }
-        self.source_table = "bamqc4merged_bamqc4merged_5"
+        self.source_table = ["bamqc4merged_bamqc4merged_5"]
         self.source_db = "bamqc4merged"
         self.process = "bamMergePreprocessing_by_tumor_group"
+        self.plots = {
+            WGCallReadyDataColumns.CoverageDedup: Plot(
+                "Coverage Depth",
+                "Sample ID",
+                "Coverage Depth",
+            ),
+            WGCallReadyDataColumns.MarkDupPctDup: Plot(
+                "Duplication",
+                "Sample ID",
+                "Duplication",
+                is_pct=True,
+            ),
+            WGCallReadyDataColumns.TotalClusters: Plot(
+                "Read Pairs",
+                "Sample ID",
+                "Read Pairs",
+            ),
+            WGCallReadyDataColumns.MappedReads: Plot(
+                "Mapped Reads",
+                "Sample ID",
+                "Mapped Reads",
+                is_pct=True,
+            )
+        }
 
     def get_data(self):
         con = sqlite3.connect(self.base_db_path+ self.source_db + "/latest")
@@ -211,22 +300,43 @@ class BAMQC4MergedTable(Table):
         data = []
 
         for id in Table.sample_ids:
-            lims = "[\"" + '\", \"'.join(Table.data[id][self.process]["limskeys"]) + "\"]"
-
-            for row in cur.execute( # forloop automatically ignores empty SELECTs
+            lims_keys = []
+            for key in Table.data[id][self.lib_type][self.tiss_origin].keys():
+                lims_keys = lims_keys + list(Table.data[id][self.lib_type][self.tiss_origin][key].keys())
+            lims_keys.sort()
+            lims = "[\"" + '\", \"'.join(lims_keys) + "\"]"
+            entry = {}
+            # print(id, lims)
+            row = cur.execute(
                 f"""
-                select {select_block} from {self.source_table} where "Merged Pinery Lims ID"  = '{lims}';
-                """):
-                entry = {}
-                entry["sample_id"] = id
-                for column in self.columns.keys():
-                    entry[column] = (
-                        row[indices[column]]
-                        if isinstance(row[indices[column]], str)
-                        else round(row[indices[column]], 2)
-                    )
-                    self.add_plot_data(column, entry[column], id)  
-                data.append(entry)
+                select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  like '%{lims}%';
+                """
+            ).fetchall()[0]
+
+            entry["sample_id"] = self.get_sample_id(cur, id, lims, "Merged Pinery Lims ID")
+            
+            for column in self.columns.keys():
+                entry[column] = (
+                    row[indices[column]]
+                    if isinstance(row[indices[column]], str)
+                    else round(row[indices[column]], 2)
+                )
+                self.add_plot_data(column, entry[column], entry["sample_id"])
+            
+            row = cur.execute(
+                f"""
+                    select (1 - CAST("unmapped reads meta" as FLOAT) /CAST("total input reads meta" as FLOAT)) * 100 from {self.source_table[0]} where "Merged Pinery Lims ID" = '{lims}';
+                    """
+                ).fetchall()[0]
+            entry[WGCallReadyDataColumns.MappedReads] = round(row[0], 2)
+            self.add_plot_data(WGCallReadyDataColumns.MappedReads, entry[WGCallReadyDataColumns.MappedReads], entry[WGCallReadyDataColumns.SampleID]) 
+
+            entry[WGCallReadyDataColumns.NumLimsKeys] = len(lims_keys)
+
+            for key, value in entry.items():
+                if not isinstance(value, str):
+                    entry[key] = f"{value:,}"   
+            data.append(entry)
         
         cur.close()
         con.close()
@@ -234,6 +344,7 @@ class BAMQC4MergedTable(Table):
 
 class DellyTable(Table):
     def __init__(self):
+        self.title = "Genomic Structural Variants"
         self.headings = {
             DellyTableColumns.SampleID: "Sample ID",
             DellyTableColumns.NumCalls: "SV Calls",
@@ -254,7 +365,7 @@ class DellyTable(Table):
             DellyTableColumns.NumINV: "num_INV",
         }
         self.pipeline_step = "calls.structuralvariants"
-        self.source_table = "analysis_delly_analysis_delly_1"
+        self.source_table = ["analysis_delly_analysis_delly_1"]
         self.source_db = "analysis_delly"
         self.process = "delly_matched_by_tumor_group"
         self.plots = {
@@ -263,6 +374,15 @@ class DellyTable(Table):
                 x_axis="Sample IDs",
                 y_axis="SV Calls"
             ),
+        }
+        self.glossary = {
+            DellyTableColumns.NumCalls: "The number of somatic structural variant calls identified by delly",
+            DellyTableColumns.NumPASS: "The number of structural variant calls marked as PASS",
+            DellyTableColumns.NumBND: "The number of PASS translocation calls",
+            DellyTableColumns.NumDEL: "The number of PASS deletion calls",
+            DellyTableColumns.NumDUP: "The number of PASS duplication calls",
+            DellyTableColumns.NumINS: "The number of PASS insertions calls",
+            DellyTableColumns.NumINV: "The number of PASS insertions calls",
         }
 
 class MetadataTable(Table):
@@ -277,22 +397,41 @@ class MetadataTable(Table):
             MetadataTableColumns.SampleID: "Sample ID",
             MetadataTableColumns.ExternalID: "External ID",
         }
-        self.columns = {
-            MetadataTableColumns.TissueOrigin: "Tissue Origin",
-            MetadataTableColumns.TissueType: "Tissue Type",
-            MetadataTableColumns.LibraryDesign: "Library Design",
-        }
+        self.columns = {}
+        self.glossary ={}
         self.pipeline_step = "calls.fusions"
-        self.source_table = "analysis_starfusion_analysis_starfusion_1"
+        self.source_table = ["analysis_starfusion_analysis_starfusion_1"]
         self.source_db = "analysis_starfusion"
         self.process = "starfusion"
 
     def get_data(self):
-        return super().get_data()
+        data = []
         
+        for case in Table.data.values():
+            ids = (
+                list(case["WT"]["Tumour"].keys())
+                + list(case["WG"]["Tumour"].keys())
+                + list(case["WG"]["Normal"].keys())
+            )
 
+            for id in ids:
+                metadata = id.split("_")
+                data.append(
+                    {
+                        MetadataTableColumns.Case: metadata[0] + "_" + metadata[1],
+                        MetadataTableColumns.TissueType: metadata[2],
+                        MetadataTableColumns.TissueOrigin: metadata[3],
+                        MetadataTableColumns.LibraryDesign: metadata[4],
+                        MetadataTableColumns.ExternalID: case["external_id"],
+                        MetadataTableColumns.SampleID: id,
+                    }
+                )
+        return data
+        
 class Mutect2Table(Table):
     def __init__(self):
+        self.title = "Mutations"
+        self.blurb = ""
         self.headings = {
             Mutect2TableColumns.SampleID: "Sample ID",
             Mutect2TableColumns.NumCalls: "Mutation Calls",
@@ -300,6 +439,13 @@ class Mutect2Table(Table):
             Mutect2TableColumns.NumSNPs: "snvs",
             Mutect2TableColumns.NumIndels: "indels",
             Mutect2TableColumns.TITVRatio: "Ti/Tv",
+        }
+        self.glossary = {
+            Mutect2TableColumns.NumCalls: "MThe number of somatic mutation calls (snvs + indels)  identified by mutect2",
+            Mutect2TableColumns.NumPASS: "The number of somatic mutation calls marked as PASS",
+            Mutect2TableColumns.NumSNPs: "The number of somatic mutation calls marked as PASS",
+            Mutect2TableColumns.NumIndels: "The number of structural variant calls marked as PASS",
+            Mutect2TableColumns.TITVRatio: "Transition to Transversion ratio",
         }
         self.columns = {
             Mutect2TableColumns.NumCalls: "num_calls",
@@ -309,7 +455,7 @@ class Mutect2Table(Table):
             Mutect2TableColumns.TITVRatio: "titv_ratio",
         }
         self.pipeline_step = "calls.mutations"
-        self.source_table = "analysis_mutect2_analysis_mutect2_1"
+        self.source_table = ["analysis_mutect2_analysis_mutect2_1"]
         self.source_db = "analysis_mutect2"
         self.process = "mutect2_matched_by_tumor_group"
         self.plots = {
@@ -327,20 +473,29 @@ class Mutect2Table(Table):
 
 class RNASeqQCTable(Table):
     def __init__(self):
-        self.title = ""
+        self.title = "WT Raw Sequence Data"
         self.blurb = ""
         self.headings = {
             RNASeqQCTableColumns.SampleID: "Sample ID",
+            RNASeqQCTableColumns.Lane: "Lane",
             RNASeqQCTableColumns.PctCodingBases: "Percent Coding",
-            RNASeqQCTableColumns.TotalClusters: "Reads Pairs",
+            RNASeqQCTableColumns.TotalClusters: "Read Pairs",
             RNASeqQCTableColumns.MappedReads: "Mapped Reads",
             RNASeqQCTableColumns.RRNAContamination: "rRNA Contamination",
+
+        }
+        self.glossary = {
+            RNASeqQCTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
+            RNASeqQCTableColumns.TotalClusters: "Number of read pairs generated",
+            RNASeqQCTableColumns.MappedReads: "% of reads mapping to the genomic reference",
+            RNASeqQCTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
+
         }
         self.columns = {
             RNASeqQCTableColumns.PctCodingBases: "PCT_CODING_BASES",
             RNASeqQCTableColumns.TotalClusters: "total clusters",
         }
-        self.source_table = "rnaseqqc2_rnaseqqc2_2"
+        self.source_table = ["rnaseqqc2_rnaseqqc2_2"]
         self.source_db = "rnaseqqc2"
         self.process = "star_lane_level"
         self.pipeline_step = "alignments_WT.lanelevel"
@@ -349,6 +504,7 @@ class RNASeqQCTable(Table):
                 title="Percent Coding",
                 x_axis="Sample ID",
                 y_axis="Percent Coding",
+                is_pct=True,
             ),
             RNASeqQCTableColumns.TotalClusters: Plot(
                 title="Reads Pair",
@@ -359,15 +515,24 @@ class RNASeqQCTable(Table):
                 title="Mapped Reads",
                 x_axis="Sample ID",
                 y_axis="Mapped Reads",
+                is_pct=True,
             ),
             RNASeqQCTableColumns.RRNAContamination: Plot(
-                title="rRna Contamination",
+                title="rRNA Contamination",
                 x_axis="Sample ID",
-                y_axis="rRna Contamination",
+                y_axis="rRNA Contamination",
+                is_pct=True,
             ),
 
         }
     
+    def get_sample_id(self, case, swid):
+        lims_lane_mapping = Table.data[case]["WT"]["Tumour"]
+        for id, value in lims_lane_mapping.items():
+            if swid in value.keys():
+                return id, value[swid]["run"]
+        raise Exception("There is no Sample ID associated with the limkey")
+
     def get_data(self):
         con = sqlite3.connect(self.base_db_path+ self.source_db + "/latest")
         cur = con.cursor()
@@ -376,48 +541,51 @@ class RNASeqQCTable(Table):
         data = []
 
         for id in Table.sample_ids:
-            lims_keys = [
-                Table.data[id]["analysis"][self.pipeline_step][self.process][key]["limkeys"]
-                for key in Table.data[id]["analysis"][self.pipeline_step][self.process].keys()
-            ]
+            lims_keys = []
+            for key in Table.data[id]["WT"]["Tumour"].keys():
+                lims_keys = lims_keys + list(Table.data[id]["WT"]["Tumour"][key].keys())
 
             for lims in lims_keys:
                 entry = {}
                 rows = cur.execute(
                     f"""
-                    select {select_block} from {self.source_table} where "Pinery Lims ID" = '{lims}';
+                    select {select_block} from {self.source_table[0]} where "Pinery Lims ID" = '{lims}';
                     """).fetchall()
                 for row in rows:
-                    entry["sample_id"] = id
+                    entry[RNASeqQCTableColumns.SampleID], entry[RNASeqQCTableColumns.Lane] = self.get_sample_id(id, lims)
                     for column in self.columns.keys():
                         entry[column] = (
                             row[indices[column]]
                             if isinstance(row[indices[column]], str)
                             else round(row[indices[column]], 2)
                         )
-                        self.add_plot_data(column, entry[column], id)                     
-
+                        self.add_plot_data(column, entry[column], entry["sample_id"])
+                        entry[column] = f"{entry[column]:,}"                        
 
                 for row in cur.execute(
                     f"""
-                        select (1 - CAST("unmapped reads" as FLOAT) /CAST("total reads" as FLOAT)) * 100 from {self.source_table} where "Pinery Lims ID" like '%{lims}%';
+                        select (1 - CAST("unmapped reads" as FLOAT) /CAST("total reads" as FLOAT)) * 100
+                        from {self.source_table[0]}
+                        where "Pinery Lims ID" like '%{lims}%';
                         """
                     ):
                     entry[RNASeqQCTableColumns.MappedReads] = round(row[0], 2)
-                    self.add_plot_data(RNASeqQCTableColumns.MappedReads, row[0], id)  
+                    self.add_plot_data(RNASeqQCTableColumns.MappedReads, row[0], entry["sample_id"])  
 
                 for row in cur.execute(
                 f"""
                     select
                     (CAST("rrna contamination properly paired" as FLOAT)
-                    /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT))
-                    from {self.source_table}
+                    /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT)) * 100
+                    from {self.source_table[0]}
                     where "Pinery Lims ID" like '%{lims}%';
                     """
                 ):
                     entry[RNASeqQCTableColumns.RRNAContamination] = round(row[0], 2)
-                    self.add_plot_data(RNASeqQCTableColumns.RRNAContamination, row[0], id)  
-
+                    self.add_plot_data(RNASeqQCTableColumns.RRNAContamination, row[0], entry["sample_id"])  
+                for key, value in entry.items():
+                    if not isinstance(value, str):
+                        entry[key] = f"{value:,}"
                 data.append(entry)
 
         cur.close()
@@ -426,15 +594,22 @@ class RNASeqQCTable(Table):
 
 class RNASeqQCMergedTable(Table):
     def __init__(self):
-        self.title = ""
+        self.title = "WT Call Ready Alignments"
         self.blurb = ""
         self.headings = {
             RNASeqQCMergedTableColumns.SampleID: "Sample ID",
             RNASeqQCMergedTableColumns.PctCodingBases: "Percent Coding",
-            RNASeqQCMergedTableColumns.TotalClusters: "Total Clusters",
+            RNASeqQCMergedTableColumns.TotalClusters: "Read Pairs",
             RNASeqQCMergedTableColumns.MappedReads: "Mapped Reads",
             RNASeqQCMergedTableColumns.RRNAContamination: "rRNA Contamination",
             RNASeqQCMergedTableColumns.NumLimsKeys: "Lanes Sequenced",
+        }
+        self.glossary = {
+            RNASeqQCMergedTableColumns.PctCodingBases: "PPercentage of bases mapping to the coding regions of the genome",
+            RNASeqQCMergedTableColumns.TotalClusters: "	Number of read pairs generated",
+            RNASeqQCMergedTableColumns.MappedReads: "% of reads mapping to the genomic reference",
+            RNASeqQCMergedTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
+            RNASeqQCMergedTableColumns.NumLimsKeys: "Number of lanes of sequencing merged to call ready",
         }
         self.columns = {
             RNASeqQCMergedTableColumns.PctCodingBases: "PCT_CODING_BASES",
@@ -442,9 +617,39 @@ class RNASeqQCMergedTable(Table):
 
         }
         self.pipeline_step = "alignments_WT.callready"
-        self.source_table = "rnaseqqc2merged_rnaseqqc2merged_2"
+        self.source_table = ["rnaseqqc2merged_rnaseqqc2merged_2"]
         self.source_db = "rnaseqqc2merged"
         self.process = "star_call_ready"
+        self.plots = {
+            RNASeqQCMergedTableColumns.PctCodingBases: Plot(
+                title="Percent Coding",
+                x_axis="Sample ID",
+                y_axis="Percent Coding",
+                is_pct=True,
+            ),
+            RNASeqQCMergedTableColumns.TotalClusters: Plot(
+                title="Read Pairs",
+                x_axis="Sample ID",
+                y_axis="Read Pairs",
+            ),
+            RNASeqQCMergedTableColumns.MappedReads: Plot(
+                title="Mapped Reads",
+                x_axis="Sample ID",
+                y_axis="Mapped Reads",
+                is_pct=True,
+            ),
+            RNASeqQCMergedTableColumns.RRNAContamination: Plot(
+                title="rRNA Contamination",
+                x_axis="Sample ID",
+                y_axis="rRNA Contamination",
+                is_pct=True,
+            ),
+            RNASeqQCMergedTableColumns.NumLimsKeys: Plot(
+                title="Lanes Sequenced",
+                x_axis="Sample ID",
+                y_axis="Lanes Sequenced",
+            )
+        }
 
     def get_data(self):
         con = sqlite3.connect(self.base_db_path+ self.source_db + "/latest")
@@ -455,41 +660,49 @@ class RNASeqQCMergedTable(Table):
 
         for id in Table.sample_ids:
             limskeys = list(Table.data[id]["analysis"][self.pipeline_step][self.process].values())[0]["limkeys"].split(':')
+            limskeys.sort()
             lims = "[\"" + "\", \"".join(limskeys) + "\"]"
 
-            print(lims)
+            # print(id, lims)
             entry = {}
             for row in cur.execute( # forloop automatically ignores empty SELECTs
                 f"""
-                select {select_block} from {self.source_table} where "Merged Pinery Lims ID"  = '{lims}';
+                select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  = '{lims}';
                 """):
-                entry["sample_id"] = id
+                entry["sample_id"] = self.get_sample_id(cur, id, lims, "Merged Pinery Lims ID")
                 for column in self.columns.keys():
                     entry[column] = (
                         row[indices[column]]
                         if isinstance(row[indices[column]], str)
                         else round(row[indices[column]], 2)
                     )
+                    self.add_plot_data(column, entry[column], entry[RNASeqQCMergedTableColumns.SampleID]) 
 
             for row in cur.execute(
                 f"""
-                    select (CAST("mapped reads" as FLOAT) /CAST("total reads" as FLOAT)) from {self.source_table} where "Merged Pinery Lims ID" = '{lims}';
+                    select (1 - CAST("unmapped reads" as FLOAT) /CAST("total reads" as FLOAT)) * 100 from {self.source_table[0]} where "Merged Pinery Lims ID" = '{lims}';
                     """
                 ):
                 entry[RNASeqQCMergedTableColumns.MappedReads] = round(row[0], 2)
+                self.add_plot_data(RNASeqQCMergedTableColumns.MappedReads, entry[RNASeqQCMergedTableColumns.MappedReads], entry[RNASeqQCMergedTableColumns.SampleID]) 
 
             for row in cur.execute(
                f"""
                 select
                 (CAST("rrna contamination properly paired" as FLOAT)
-                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT))
-                from {self.source_table}
+                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT)) * 100
+                from {self.source_table[0]}
                 where "Merged Pinery Lims ID" = '{lims}';
                 """
             ):
                 entry[RNASeqQCMergedTableColumns.RRNAContamination] = round(row[0], 2)
+                self.add_plot_data(RNASeqQCMergedTableColumns.RRNAContamination, entry[RNASeqQCMergedTableColumns.RRNAContamination], entry[RNASeqQCMergedTableColumns.SampleID]) 
             
             entry[RNASeqQCMergedTableColumns.NumLimsKeys] = len(limskeys)
+            self.add_plot_data(RNASeqQCMergedTableColumns.NumLimsKeys, entry[RNASeqQCMergedTableColumns.NumLimsKeys], entry[RNASeqQCMergedTableColumns.SampleID]) 
+            for key, value in entry.items():
+                if not isinstance(value, str):
+                    entry[key] = f"{value:,}"
             data.append(entry)
         
         cur.close()
@@ -498,13 +711,8 @@ class RNASeqQCMergedTable(Table):
 
 class RSEMTable(Table):
     def __init__(self):
-        self.title = "Call Summary"
-        self.blurb = """
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-            Curabitur sit amet commodo lorem.
-            Vivamus mollis mauris urna, eget volutpat ex pharetra vel.
-            Suspendisse ultrices commodo feugiat.
-            """
+        self.title = "Gene Expression"
+        self.blurb = ""
         self.headings = {
             RSEMTableColumns.SampleID: "Sample ID",
             RSEMTableColumns.Total: "Total Genes",
@@ -512,6 +720,13 @@ class RSEMTable(Table):
             RSEMTableColumns.Q0_05: "TPM, 5th percentile",
             RSEMTableColumns.Q0_5: "Median TPM",
             RSEMTableColumns.Q0_95: "TPM, 95th percentile",
+        }
+        self.glossary = {
+            RSEMTableColumns.Total: "The total number of genes in the gene model",
+            RSEMTableColumns.PctNonZero: "The percentage of genes expressed (non-zero)",
+            RSEMTableColumns.Q0_05: "5th percentile of the Transcripts per Million scores",
+            RSEMTableColumns.Q0_5: "Median Transcripts per Million score",
+            RSEMTableColumns.Q0_95: "95th percentile of the Transcripts per Million score",
         }
         self.columns = {
             RSEMTableColumns.Total: "total",
@@ -521,36 +736,64 @@ class RSEMTable(Table):
             RSEMTableColumns.Q0_95: "Q0.95",
         }
         self.pipeline_step = "calls.expression"
-        self.source_table = "analysis_rsem_analysis_rsem_1"
+        self.source_table = ["analysis_rsem_analysis_rsem_1"]
         self.source_db = "analysis_rsem"
         self.process = "rsem"
+        self.plots = {
+            "pct_non_zero": Plot(
+                title="Percent Expressed",
+                x_axis="Sample ID",
+                y_axis="Percent Expressed",
+                is_pct=True,
+            ),
+            "Q0.5": Plot(
+                title="Median TMP",
+                x_axis="Sample ID",
+                y_axis="Median TMP",
+            ),
+        }
 
 class SequenzaTable(Table):
     def __init__(self):
-        self.title = "Alternative Solutions"
-        self.blurb = """
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-            Curabitur sit amet commodo lorem.
-            Vivamus mollis mauris urna, eget volutpat ex pharetra vel.
-            Suspendisse ultrices commodo feugiat.
-            """
+        self.title = "Copy Number Alterations"
+        self.blurb = ""
         self.headings = {
             SequenzaTableColumns.SampleID: "Sample ID",
             SequenzaTableColumns.Cellularity: "Cellularity",
             SequenzaTableColumns.Ploidy: "Ploidy",
-            SequenzaTableColumns.SLPP: "SLPP",
             SequenzaTableColumns.FGA: "FGA"
+        }
+        self.glossary = {
+            SequenzaTableColumns.Cellularity: "cellularity estimate (gamma=500)",
+            SequenzaTableColumns.Ploidy: "ploidy estimate (gamma = 500)",
+            SequenzaTableColumns.FGA: "Fraction of the genome altered (gamma = 500)"
         }
         self.columns = {
             SequenzaTableColumns.Cellularity: "cellularity",
             SequenzaTableColumns.Ploidy: "ploidy",
-            SequenzaTableColumns.SLPP: "SLPP",
             # SequenzaTableColumns.FGA: "fga" this column is added manually
         }
         self.pipeline_step = "calls.copynumber"
         self.source_table = ["analysis_sequenza_analysis_sequenza_alternative_solutions_1", "analysis_sequenza_analysis_sequenza_gamma_500_fga_1"]
         self.source_db = "analysis_sequenza"
         self.process = "sequenza_by_tumor_group"
+        self.plots = {
+            SequenzaTableColumns.Cellularity: Plot(
+                title="Cellularity",
+                x_axis="Sample ID",
+                y_axis="Cellularity",
+            ),
+            SequenzaTableColumns.Ploidy: Plot(
+                title="Ploidy",
+                x_axis="Sample ID",
+                y_axis="Ploidy",
+            ),
+            SequenzaTableColumns.FGA: Plot(
+                title="FGA",
+                x_axis="Sample ID",
+                y_axis="FGA",
+            ),
+        }
     
     def get_data(self):
         con = sqlite3.connect(self.base_db_path + self.source_db + "/latest")
@@ -567,22 +810,26 @@ class SequenzaTable(Table):
                 """
             ).fetchall()[0]
 
-            entry["sample_id"] = id
+            entry["sample_id"] = self.get_sample_id(cur, id, wfr, "Workflow Run SWID")
             for column in self.columns.keys():
                 entry[column] = (
                     row[indices[column]]
                     if isinstance(row[indices[column]], str)
                     else round(row[indices[column]], 2)
                 )
-                self.add_plot_data(column, entry[column], id)
-            
+                self.add_plot_data(column, entry[column], entry["sample_id"])
+
+            #get FGA
             row = cur.execute(
                 f"""
                 select fga from {self.source_table[1]} where "Workflow Run SWID" like '%{wfr}%';
                 """
             ).fetchall()[0]
-            entry[SequenzaTableColumns.FGA] = row[0]
-            self.add_plot_data(SequenzaTableColumns.FGA, row[0], id)
+            entry[SequenzaTableColumns.FGA] = round(row[0],2)
+            self.add_plot_data(SequenzaTableColumns.FGA, row[0], entry["sample_id"])
+            for key, value in entry.items():
+                if not isinstance(value, str):
+                    entry[key] = f"{value:,}"
             data.append(entry)
         
         cur.close()
@@ -591,21 +838,24 @@ class SequenzaTable(Table):
 
 class StarFusionTable(Table):
     def __init__(self):
-        self.title = ""
+        self.title = "Gene Fusions"
         self.blurb = ""
         self.headings = {
             StarFusionTableColumns.SampleID: "Sample ID",
             StarFusionTableColumns.NumRecords: "Fusion Calls",
         }
+        self.glossary = {
+            StarFusionTableColumns.NumRecords: "Number of gene fusions identified by StarFusion",
+        }
         self.columns = {
             StarFusionTableColumns.NumRecords: "num_records",
         }
         self.pipeline_step = "calls.fusions"
-        self.source_table = "analysis_starfusion_analysis_starfusion_1"
+        self.source_table = ["analysis_starfusion_analysis_starfusion_1"]
         self.source_db = "analysis_starfusion"
         self.process = "starfusion"
         self.plots = {
-            "num_records": Plot(
+            StarFusionTableColumns.NumRecords: Plot(
                 title="Fusion Calls",
                 x_axis="Sample ID",
                 y_axis="Fusion Calls"

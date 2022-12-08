@@ -4,13 +4,14 @@ from tables import (
     DellyTable,
     StarFusionTable,
     Mutect2Table,
-    BAMQC4Table,
     MetadataTable,
     RNASeqQCTable,
-    BAMQC4MergedTable,
+    WGCallReadyData,
     RNASeqQCMergedTable,
+    WGLaneLevelData,
 )
 from typing import Dict, Type, List, Callable, Union, Tuple, Set, Any
+from datetime import date
 
 
 class Section:
@@ -31,8 +32,9 @@ class Section:
         }
         for tcount, table in enumerate(self.tables):
             context["tables"][tcount] = table.load_context()
+            context["tables"][tcount]["plots"] = {}
             for pcount, (column, plot) in enumerate(table.plots.items()):
-                context["plots"][f"{tcount}_{pcount}"] = plot.load_context(f"{table.process}_{column}")
+                context["tables"][tcount]["plots"][pcount] = plot.load_context(f"{table.process}_{column}")
 
         return context
 
@@ -98,11 +100,9 @@ class Mutect2Section(Section):
 
 class MetadataSection(Section):
     def __init__(self):
-        self.title = "Metadata"
+        self.title = "Cases"
         self.blurb = """
-        It was the best of times, it was the worst of times, it was the age of
-        wisdom, it was the age of foolishness, it was the epoch of belief, it was
-        the epoch of incredulity...
+        The following cases are included in this release.
         """
         self.name = "metadata"
         self.tables = [
@@ -117,10 +117,17 @@ class RawSeqDataSection(Section):
         """
         self.name = "raw_data"
         self.tables = [
-            BAMQC4Table(),
+            WGLaneLevelData(
+                "Whole Genome, Tumour Sample",
+                "WG",
+                "Tumour",
+            ),
+            WGLaneLevelData(
+                "Whole Genome, Normal Sample",
+                "WG",
+                "Normal",
+            ),
             RNASeqQCTable(),
-            # BAMQC4MergedTable(),
-            # RNASeqQCMergedTable(),
         ]
 
 class CallReadyAlignmentsSection(Section):
@@ -131,6 +138,29 @@ class CallReadyAlignmentsSection(Section):
         """
         self.name = "call_ready"
         self.tables = [
-            # BAMQC4MergedTable(),
+            WGCallReadyData(
+                "Whole Genome, Tumour Samples",
+                "WG",
+                "Tumour",
+            ),
+            WGCallReadyData(
+                "Whole Genome, Normal Samples",
+                "WG",
+                "Normal",
+            ),
             RNASeqQCMergedTable(),
         ]
+
+class HeaderSection(Section):
+    def __init__(self):
+        self.project = "IRIS"
+        self.title = "Marathon of Hope"
+        self.name = "header"
+        
+    def load_context(self):
+        context = {
+            "project": self.project,
+            "date": date.today().strftime("%Y-%m-%d"),
+            "title": self.title
+        }
+        return context

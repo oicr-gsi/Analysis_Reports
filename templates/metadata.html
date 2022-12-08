@@ -9,37 +9,36 @@
     <table style="width:100%; font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
         <tr>
             <td style="width: 40%; padding: 3px; text-align: left"><img src="./static/images/OICR_Logo_RGB_ENGLISH.png" alt="OICR_logo" title="OICR_logo" style="padding-right: 8px; padding-left:0px; width:10; height:10"></td>
-            <td style="width: 60%; padding: 3px; text-align: left"><p style="text-align: center; color: black; font-size:30px; font-family: Arial, Verdana, sans-serif; font-weight:600">Analysis Report</p></td>
+            <td style="width: 60%; padding: 3px; text-align: left">
+                <p style="text-align: center; color: black; font-size:30px; font-family: Arial, Verdana, sans-serif; font-weight:600">{{ header.title }} Data Release Report</p>
+            </td>
         </tr>
    </table>
    
-   <!-- <table id="project_table">
+   <table id="project_table">
         <tr>
             <th>Project Code</th>
-            <th>Project Name</th>
             <th>Date</th>     
-        </tr>   
-        {% for i in projects %}   
+        </tr>    
             <tr>       
-            <td> {{ i['acronym'] }} </td>
-            <td> {{ i['name'] }} </td>        
-            <td> {{ i['date'] }} </td>
-            </tr>
-        {% endfor %}   
+            <td> {{ header.project }} </td>      
+            <td> {{ header.date }} </td>
+            </tr> 
    </table>
-   
-   <h2>1. Sample metadata</h2>
+   <br>
+   <br>
+   <br>
 
-   <p>Provides information about the sequenced samples.</p> -->
 
     {% for section in sections %}
-        <h2>Section {{ loop.index }}. {{ section }}</h2>
+        <h2>{{ loop.index }}. {{ sections[section].title }}</h2>
         <p>{{ sections[section].blurb }}</p>
 
         {% for table in sections[section].tables %}
-            <h3>Table {{ loop.index }}. {{ sections[section].tables[table].title }}</h3>
+        <br>        
+        <h3>Table {{ loop.index }}. {{ sections[section].tables[table].title }}</h3>
             <p>{{ sections[section].tables[table].blurb }}</p>
-            <table id="info_table", style="font-size: 12px;">
+            <table id="info_table", style="font-size: 9px;">
                 <tr>
                     {% for heading in sections[section].tables[table].headings %}
                         <th>{{ sections[section].tables[table]["headings"][heading] }}</th>
@@ -47,10 +46,10 @@
                 </tr>  
 
                 {% for entry in sections[section].tables[table]["data"] %}
-                    <tr>       
+                    <tr style="page-break-inside: avoid;">       
                         {% if entry %}
                             {% for heading in sections[section].tables[table]["headings"] %}
-                                <td>{{ entry[heading] }}</td>
+                                <td style="word-break:break-all;">{{ entry[heading] }}</td>
                             {% endfor %}
                         {% else %}
                             <td>{{ id }}</td>
@@ -61,163 +60,31 @@
                     </tr>
                 {% endfor %}
             </table>
+            
+            {% for entry in sections[section].tables[table].glossary %}
+                <p style="font-size:6px;"><b>{{ sections[section].tables[table].headings[entry] }}</b>: {{ sections[section].tables[table].glossary[entry] }}</p>
+            {% endfor %}
+
             <div style="page-break-after: always;"></div>
+        
+            {% if sections[section].tables[table].plots %}
+                <h3>{{ sections[section].tables[table].title }} Plots</h3>
+                    {% for plot in sections[section].tables[table].plots %}
+                        <div style="page-break-inside: avoid;">
+                            <p style="font-size: 14px;font-weight: 600;">Figure {{ loop.index }}. Plot of {{ sections[section].tables[table].plots[plot].title }}</p>
+                            <br>
+                            <img src="{{ sections[section].tables[table].plots[plot].fig_path }}"></img>
+                        </div>
+        
+                    {% endfor %}
+                    <div style="page-break-after: always;"></div>
+            {% endif %}                
         {% endfor %}
 
-        <h2>{{ section }} Plots</h2>
 
-        {% for plot in sections[section].plots %}
-            <p>Figure {{ loop.index }}. Plot of {{ sections[section].plots[plot].title }}</p>
-            <img src="{{ sections[section].plots[plot].fig_path }}"></img>
 
-        {% endfor %}
 
     
 {% endfor %}
-     
-   <!-- <h3>Table 1. Metadata</h3>
-   <p>{{ metadata_blurb }}</p>
-
-    <table id="info_table", style="font-size: 12px;">
-        <tr>
-            {% for heading in metadata_headers %}
-                <th>{{ metadata_headers[heading] }}</th>
-            {% endfor %}
-        </tr>  
-
-        {% for id in metadata_data %}
-            <tr>       
-                {% if metadata_data[id] %}
-                    {% for heading in metadata_headers %}
-                        <td>{{ metadata_data[id][heading] }}</td>
-                    {% endfor %}
-                {% else %}
-                    <td>{{ id }}</td>
-                        {% for i in range (metadata_headers|length - 1) %}
-                    <td> — </td>
-                    {% endfor %}
-                {% endif %}
-            </tr>
-        {% endfor %}
-    </table>
-
-    <div style="page-break-after: always;"></div>
-
-    <h3>Table 1. RSEM</h3>
-    <p>{{ rsem_blurb }}</p>
-
-    <table id="info_table", style="font-size: 12px;">
-        <tr>
-            {% for heading in rsem_headers %}
-                <th>{{ rsem_headers[heading] }}</th>
-            {% endfor %}
-        </tr>  
-
-        {% for id in rsem_data %}
-            <tr>       
-                {% if rsem_data[id] %}
-                    {% for heading in rsem_headers %}
-                        <td>{{ rsem_data[id][heading] }}</td>
-                    {% endfor %}
-                {% else %}
-                    <td>{{ id }}</td>
-                        {% for i in range (rsem_headers|length - 1) %}
-                    <td> — </td>
-                    {% endfor %}
-                {% endif %}
-            </tr>
-        {% endfor %}
-    </table>
-
-    <div style="page-break-after: always;"></div>
-    
-    <h3>Table 2. StarFusion</h3>
-    <p>{{ starfusion_blurb }}</p>
-
-    <table id="info_table", style="font-size: 12px;">
-        <tr>
-            {% for heading in starfusion_headers %}
-                <th>{{ starfusion_headers[heading] }}</th>
-            {% endfor %}
-        </tr>  
-
-        {% for id in starfusion_data %}
-            <tr>       
-                {% if starfusion_data[id] %}
-                    {% for heading in starfusion_headers %}
-                        <td>{{ starfusion_data[id][heading] }}</td>
-                    {% endfor %}
-                {% else %}
-                    <td>{{ id }}</td>
-                    {% for i in range (starfusion_headers|length - 1) %}
-                        <td> — </td>
-                    {% endfor %}
-                {% endif %}
-            </tr>
-        {% endfor %}
-    </table>
-
-    <div style="page-break-after: always;"></div>
-
-    <h3>Table 3. Mutect2</h3>
-    <p>{{ mutect2_blurb }}</p>
-
-    {% for table in mutect2_tables %}
-        <h4>{{ mutect2_tables[table].title }}<h4>
-        <p>{{ mutect2_tables[table].blurb }}</p>
-        <table id="info_table", style="font-size: 12px;">
-            <tr>
-                {% for heading in mutect2_tables[table].headings %}
-                    <th>{{ mutect2_tables[table]["headings"][heading] }}</th>
-                {% endfor %}
-            </tr>  
-
-            {% for id in mutect2_tables[table]["data"] %}
-                <tr>       
-                    {% if mutect2_tables[table]["data"][id] %}
-                        {% for heading in mutect2_tables[table]["headings"] %}
-                            <td>{{ mutect2_tables[table]["data"][id][heading] }}</td>
-                        {% endfor %}
-                    {% else %}
-                        <td>{{ id }}</td>
-                            {% for i in range (mutect2_tables[table].headings|length - 1) %}
-                        <td> — </td>
-                        {% endfor %}
-                    {% endif %}
-                </tr>
-            {% endfor %}
-        </table>
-        <div style="page-break-after: always;"></div>
-    {% endfor %}
-
-
-
-    <h3>Table 4. Delly</h3>
-    <p>{{ delly_blurb }}</p>
-
-    <table id="info_table", style="font-size: 12px;">
-        <tr>
-            {% for heading in delly_headers %}
-                <th>{{ delly_headers[heading] }}</th>
-            {% endfor %}
-        </tr>  
-
-        {% for id in delly_data %}
-            <tr>       
-                {% if delly_data[id] %}
-                    {% for heading in delly_headers %}
-                        <td>{{ delly_data[id][heading] }}</td>
-                    {% endfor %}
-                {% else %}
-                    <td>{{ id }}</td>
-                        {% for i in range (delly_headers|length - 1) %}
-                    <td> — </td>
-                    {% endfor %}
-                {% endif %}
-            </tr>
-        {% endfor %}
-    </table> -->
-
-
 </body>
 </html>
