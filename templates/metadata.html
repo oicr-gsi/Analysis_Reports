@@ -28,13 +28,25 @@
    <br>
    <br>
    <br>
+
+   <h2 style="margin-left: 20px"><b>Contents</b></h2>
     {% for section in sections %}
-        <h2>{{ loop.index }}. {{ sections[section].title }}</h2>
+        <div class="toc-row"><a href="#{{ section }}"> {{ loop.index}}. {{ sections[section].title }}</a></div>
+        {% if sections[section].tables|length > 1 %}
+            {% for table in sections[section].tables %}     
+                <div class="toc-row" style="margin-left:100px"><a href="#{{ section }}_{{ table }}"> {{ sections[section].tables[table].title }}</a></div>
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+   <div style="page-break-after: always;"></div>
+
+    {% for section in sections %}
+        <h2 id="{{ section }}">{{ loop.index }}. {{ sections[section].title }}</h2>
         <p>{{ sections[section].blurb }}</p>
         {% for table in sections[section].tables %}
-        {% if sections[section].tables|length > 1 %}        
-            <h3>{{ sections[section].tables[table].title }}</h3>
-        {% endif %}
+            {% if sections[section].tables|length > 1 %}        
+                <h3 id="{{ section }}_{{ table }}">{{ sections[section].tables[table].title }}</h3>
+            {% endif %}
             <p>{{ sections[section].tables[table].blurb }}</p>
             <table id="info_table", style="font-size: 9px;">
                 <tr>

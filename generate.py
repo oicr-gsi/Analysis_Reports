@@ -23,7 +23,7 @@ from section import (
     StarFusionSection,
     Mutect2Section,
     RawSeqDataSection,
-    MetadataSection,
+    CasesSection,
     CallReadyAlignmentsSection,
     HeaderSection,
 )
@@ -40,7 +40,7 @@ class Report:
     context = {"sections":{}, "header": {}}
     header = HeaderSection()
     sections = [
-        MetadataSection(),
+        CasesSection(),
         RawSeqDataSection(),
         CallReadyAlignmentsSection(),
         Mutect2Section(),
@@ -70,13 +70,11 @@ def makepdf(html, outputfile):
     htmldoc = HTML(string=html, base_url=__file__)
     htmldoc.write_pdf(outputfile, stylesheets=[CSS('./static/css/style.css')], presentational_hints=True)
 
-
-def thousands_separator(value):
-    return f"{value:,.2f}"
-
-def generate_report():
+def generate_report(input, output, use_stage):
+    infile = input if input else "IRIS.json"
+    outfile = output if output else "Analysis_Report.pdf"
     report = Report()
-    table = Table("IRIS-3.json") #initializing table data
+    table = Table(infile, use_stage) #initializing table data
     report.load_context()
 
     with open('meta_context.json', 'w', encoding='utf-8') as file:
@@ -87,20 +85,47 @@ def generate_report():
     #         json.dump(json.load(f), input, indent=4)
 
     environment = Environment(loader=FileSystemLoader("templates/"))
-    # environment.filters["thousands_separator"] = thousands_separator
     results_template = environment.get_template("metadata.html")
 
     contents = results_template.render(report.context)
 
-    # with open("meta_report.html", "w", encoding="utf-8") as results:
-    #     results.write(contents)
-    #     print("wrote to sample_report.html")
+    with open("meta_report.html", "w", encoding="utf-8") as results:
+        results.write(contents)
+        print("wrote to sample_report.html")
     
-    makepdf(contents, "my_report.pdf")
-    print("created report my_report.pdf")
+    makepdf(contents, outfile)
+    print(f"created report {outfile}")
 
 
 if __name__ == "__main__":
     print("starting")
 
-    generate_report()
+    parser = argparse.ArgumentParser(
+        description="Generates a MOH Data Release Report"
+    )
+
+    parser.add_argument(
+        '-i',
+        '--infile',
+        type=str,
+        required=False,
+        help="Name of the input file. Default looks for IRIS.json"
+    )
+    parser.add_argument(
+        '-o',
+        '--outfile',
+        type=str,
+        required=False,
+        help="Name of output file. Default names pdf Analysis_Report.pdf"
+    )
+    parser.add_argument(
+        '--stage',
+        '--staging',
+        action="store_true",
+        help="Use qcetl data from stage",
+    )
+    args = parser.parse_args()
+
+    print(args)
+
+    generate_report(input=args.infile, output=args.outfile, use_stage=args.stage)

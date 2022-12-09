@@ -4,11 +4,11 @@ from tables import (
     DellyTable,
     StarFusionTable,
     Mutect2Table,
-    MetadataTable,
-    RNASeqQCTable,
-    WGCallReadyData,
-    RNASeqQCMergedTable,
-    WGLaneLevelData,
+    CasesTable,
+    WTLaneLevelTable,
+    WGCallReadyTable,
+    WTCallReadyTable,
+    WGLaneLevelTable,
 )
 from typing import Dict, Type, List, Callable, Union, Tuple, Set, Any
 from datetime import date
@@ -38,6 +38,78 @@ class Section:
 
         return context
 
+class CasesSection(Section):
+    def __init__(self):
+        self.title = "Cases"
+        self.blurb = """
+        The following cases are included in this release.
+        """
+        self.name = "cases"
+        self.tables = [
+            CasesTable(),
+        ]
+
+class CallReadyAlignmentsSection(Section):
+    def __init__(self):
+        self.title = "Call Ready Alignments"
+        self.blurb = """
+        All data from each sample is merged and processed to a call ready state.
+        """
+        self.name = "call_ready"
+        self.tables = [
+            WGCallReadyTable(
+                "Whole Genome, Normal Samples",
+                "WG",
+                "Normal",
+            ),
+            WGCallReadyTable(
+                "Whole Genome, Tumour Samples",
+                "WG",
+                "Tumour",
+            ),
+            WTCallReadyTable(),
+        ]
+
+
+class DellySection(Section):
+    def __init__(self):
+        self.title = "Genomic Structural Variants"
+        self.blurb = """
+        Summary metrics for structural variants  generated from the WG Tumour/Normal pairs.
+        Calls are generated with delly.
+        """
+        self.name = "delly"
+        self.tables = [
+            DellyTable(),
+        ]
+
+class HeaderSection(Section):
+    def __init__(self):
+        self.project = "IRIS"
+        self.title = "Marathon of Hope"
+        self.name = "header"
+        
+    def load_context(self):
+        context = {
+            "project": self.project,
+            "date": date.today().strftime("%Y-%m-%d"),
+            "title": self.title
+        }
+        return context
+        
+
+class Mutect2Section(Section):
+    def __init__(self):
+        self.title = "Mutations"
+        self.blurb = """
+        Summary metrics for somatic mutations (snvs + indels) generated from the WG Tumour/Normal pairs.
+        Calls are generated with mutect2, and annotated with variant effect predictor.
+        """
+        self.name = "mutect2"
+        self.tables = [
+            Mutect2Table(),
+        ]
+    
 class RSEMSection(Section):
     def __init__(self):
         self.title = "Gene Expression"
@@ -62,18 +134,6 @@ class SequenzaSection(Section):
             SequenzaTable(),
         ]
 
-class DellySection(Section):
-    def __init__(self):
-        self.title = "Genomic Structural Variants"
-        self.blurb = """
-        Summary metrics for structural variants  generated from the WG Tumour/Normal pairs.
-        Calls are generated with delly.
-        """
-        self.name = "delly"
-        self.tables = [
-            DellyTable(),
-        ]
-
 class StarFusionSection(Section):
     def __init__(self):
         self.title = "Gene Fusions"
@@ -86,81 +146,23 @@ class StarFusionSection(Section):
             StarFusionTable(),
         ]
 
-class Mutect2Section(Section):
-    def __init__(self):
-        self.title = "Mutations"
-        self.blurb = """
-        Summary metrics for somatic mutations (snvs + indels) generated from the WG Tumour/Normal pairs.
-        Calls are generated with mutect2, and annotated with variant effect predictor.
-        """
-        self.name = "mutect2"
-        self.tables = [
-            Mutect2Table(),
-        ]
-
-class MetadataSection(Section):
-    def __init__(self):
-        self.title = "Cases"
-        self.blurb = """
-        The following cases are included in this release.
-        """
-        self.name = "metadata"
-        self.tables = [
-            MetadataTable(),
-        ]
-
 class RawSeqDataSection(Section):
     def __init__(self):
         self.title = "Raw Sequence Data"
         self.blurb = """
         Samples were sequenced on one or more sequencing runs.
         """
-        self.name = "raw_data"
+        self.name = "raw_seq_data"
         self.tables = [
-            WGLaneLevelData(
-                "Whole Genome, Tumour Sample",
-                "WG",
-                "Tumour",
-            ),
-            WGLaneLevelData(
+            WGLaneLevelTable(
                 "Whole Genome, Normal Sample",
                 "WG",
                 "Normal",
             ),
-            RNASeqQCTable(),
-        ]
-
-class CallReadyAlignmentsSection(Section):
-    def __init__(self):
-        self.title = "Call Ready Alignments"
-        self.blurb = """
-        All data from each sample is merged and processed to a call ready state.
-        """
-        self.name = "call_ready"
-        self.tables = [
-            WGCallReadyData(
-                "Whole Genome, Tumour Samples",
+            WGLaneLevelTable(
+                "Whole Genome, Tumour Sample",
                 "WG",
                 "Tumour",
             ),
-            WGCallReadyData(
-                "Whole Genome, Normal Samples",
-                "WG",
-                "Normal",
-            ),
-            RNASeqQCMergedTable(),
+            WTLaneLevelTable(),
         ]
-
-class HeaderSection(Section):
-    def __init__(self):
-        self.project = "IRIS"
-        self.title = "Marathon of Hope"
-        self.name = "header"
-        
-    def load_context(self):
-        context = {
-            "project": self.project,
-            "date": date.today().strftime("%Y-%m-%d"),
-            "title": self.title
-        }
-        return context

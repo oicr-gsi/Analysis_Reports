@@ -121,6 +121,25 @@ border: 1px solid #ddd;
 color: black;
 }
 
+.toc-row {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  margin-left: 50px;
+  margin-right: 50px;
+  padding-bottom: 5px;
+}
+.toc-row a::after {
+  content: leader('.') target-counter(attr(href), page, decimal);
+}
+
+.toc-row a:link {
+  color: black;
+  text-decoration: none;
+}
+
+.toc-row a:visited {
+  color: black;
+}
 
 
 @page {
