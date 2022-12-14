@@ -1,4 +1,5 @@
 from tables import (
+    Table,
     RSEMTable, 
     SequenzaTable,
     DellyTable,
@@ -38,6 +39,18 @@ class Section:
 
         return context
 
+class CallReadyAlignmentsSection(Section):
+    def __init__(self):
+        self.title = "Call Ready Alignments"
+        self.blurb = """
+        All data from each sample is merged and processed to a call ready state.
+        """
+        self.name = "call_ready"
+        self.tables = [
+            WGCallReadyTable(),
+            WTCallReadyTable(),
+        ]
+
 class CasesSection(Section):
     def __init__(self):
         self.title = "Cases"
@@ -48,28 +61,6 @@ class CasesSection(Section):
         self.tables = [
             CasesTable(),
         ]
-
-class CallReadyAlignmentsSection(Section):
-    def __init__(self):
-        self.title = "Call Ready Alignments"
-        self.blurb = """
-        All data from each sample is merged and processed to a call ready state.
-        """
-        self.name = "call_ready"
-        self.tables = [
-            WGCallReadyTable(
-                "Whole Genome, Normal Samples",
-                "WG",
-                "Normal",
-            ),
-            WGCallReadyTable(
-                "Whole Genome, Tumour Samples",
-                "WG",
-                "Tumour",
-            ),
-            WTCallReadyTable(),
-        ]
-
 
 class DellySection(Section):
     def __init__(self):
@@ -84,20 +75,28 @@ class DellySection(Section):
         ]
 
 class HeaderSection(Section):
-    def __init__(self):
-        self.project = "IRIS"
+    def __init__(self, project, release):
+        self.project = project
+        self.release = release
         self.title = "Marathon of Hope"
         self.name = "header"
+        self.blurb = """
+        The data release report summarizes a variety of metrics generated from our 
+        quality control and analysis workflows. All MOH cases are processed through 
+        our WGTS (Whole Genome, Transcriptome) sequencing and analysis pipelines, and
+        include a single tumour sample with a matched normal.
+        """
         
     def load_context(self):
         context = {
             "project": self.project,
             "date": date.today().strftime("%Y-%m-%d"),
-            "title": self.title
+            "title": self.title,
+            "blurb": self.blurb,
+            "release": self.release,
         }
         return context
         
-
 class Mutect2Section(Section):
     def __init__(self):
         self.title = "Mutations"
@@ -109,13 +108,26 @@ class Mutect2Section(Section):
         self.tables = [
             Mutect2Table(),
         ]
+
+class RawSeqDataSection(Section):
+    def __init__(self):
+        self.title = "Raw Sequence Data"
+        self.blurb = """
+        Samples were sequenced on one or more sequencing runs.
+        """
+        self.name = "raw_seq_data"
+        self.tables = [
+            WGLaneLevelTable(),
+            WTLaneLevelTable(),
+        ]
     
 class RSEMSection(Section):
     def __init__(self):
         self.title = "Gene Expression"
         self.blurb = """
-        Summary metrics for normalized expression (TPM, gencode release 31)
-        \nExpression values are generated with RSEM
+        Summary metrics for normalized expression (TPM, transcripts per million) for genes in gencode release 31 
+        (https://www.gencodegenes.org/human/release_31.html). \n
+        Expression values are generated with RSEM.
         """
         self.name = "rsem"
         self.tables = [
@@ -127,7 +139,9 @@ class SequenzaSection(Section):
         self.title = "Copy Number Alterations"
         self.blurb = """
         Summary metrics for somatic copy number alterations generated from the WG Tumour/Normal pairs.
-        Initial calls are generated with varscan, then processed with Sequenza
+        \nInitial calls are generated with varscan, then processed with Sequenza.
+        Multiple copy number profiles are generated and released over a range of tunable gamma settings.
+        Metrics displayed are for gamma = 500.
         """
         self.name = "sequenza"
         self.tables = [
@@ -144,25 +158,4 @@ class StarFusionSection(Section):
         self.name = "starfusion"
         self.tables = [
             StarFusionTable(),
-        ]
-
-class RawSeqDataSection(Section):
-    def __init__(self):
-        self.title = "Raw Sequence Data"
-        self.blurb = """
-        Samples were sequenced on one or more sequencing runs.
-        """
-        self.name = "raw_seq_data"
-        self.tables = [
-            WGLaneLevelTable(
-                "Whole Genome, Normal Sample",
-                "WG",
-                "Normal",
-            ),
-            WGLaneLevelTable(
-                "Whole Genome, Tumour Sample",
-                "WG",
-                "Tumour",
-            ),
-            WTLaneLevelTable(),
         ]

@@ -35,25 +35,26 @@ db = f"/.mounts/labs/gsiprojects/gsi/gsiusers/jqian/gsi-qc-etl/gsiqcetl/"
 
 
 class Report:
-    data = {}
-    sample_ids = []
-    context = {"sections":{}, "header": {}}
-    header = HeaderSection()
-    sections = [
-        CasesSection(),
-        RawSeqDataSection(),
-        CallReadyAlignmentsSection(),
-        Mutect2Section(),
-        SequenzaSection(),
-        DellySection(),
-        RSEMSection(),
-        StarFusionSection(),
-    ]
+    def __init__(self, project, release):
+        self.data = {}
+        self.sample_ids = []
+        self.context = {"sections":{}, "header": {}}
+        self.header = HeaderSection(project, release)
+        self.sections = [
+            CasesSection(),
+            RawSeqDataSection(),
+            CallReadyAlignmentsSection(),
+            Mutect2Section(),
+            SequenzaSection(),
+            DellySection(),
+            RSEMSection(),
+            StarFusionSection(),
+        ]
 
     def load_context(self):
-        Report.context["header"] = self.header.load_context()
+        self.context["header"] = self.header.load_context()
         for section in self.sections:
-            Report.context["sections"][section.name] = section.load_context()
+            self.context["sections"][section.name] = section.load_context()
 
 def makepdf(html, outputfile):
     """
@@ -73,8 +74,10 @@ def makepdf(html, outputfile):
 def generate_report(input, output, use_stage):
     infile = input if input else "IRIS.json"
     outfile = output if output else "Analysis_Report.pdf"
-    report = Report()
     table = Table(infile, use_stage) #initializing table data
+    print(table.data.keys())
+    report = Report(table.project, table.release)
+
     report.load_context()
 
     with open('meta_context.json', 'w', encoding='utf-8') as file:

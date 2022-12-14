@@ -1,4 +1,37 @@
 
+.case_table {
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 30px;
+  margin-bottom: 30px;
+  font-family: Arial, Helvetica, sans-serif;
+  border-collapse: collapse;
+  width: 95%;
+  }
+  .case_table td, .case_table th {
+  padding: 8px;
+  }
+
+  .case_table th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: left;
+  background-color: white;
+  border-top: 1px solid black;
+  border-bottom: 1px solid black;
+  color: black;
+  }
+  
+.odd {
+  background-color: #f2f2f2;
+}
+
+.even {
+  background-color: white;
+}
+
+
+
 h1 {
   border: 2px #eee solid;
   color: black;
@@ -70,7 +103,7 @@ width: 85%;
 } */
 
 
-#info_table {
+.info_table {
 margin-left: auto;
 margin-right: auto;
 margin-top: 30px;
@@ -79,12 +112,12 @@ font-family: Arial, Helvetica, sans-serif;
 border-collapse: collapse;
 width: 95%;
 }
-#info_table td, #info_table th {
+.info_table td, .info_table th {
 /* border: 1px solid #ddd; */
 padding: 8px;
 }
-#info_table tr:nth-child(even){background-color: #f2f2f2;}
-#info_table th {
+.info_table tr:nth-child(even){background-color: #f2f2f2;}
+.info_table th {
 padding-top: 12px;
 padding-bottom: 12px;
 text-align: left;
@@ -93,8 +126,6 @@ border-top: 1px solid black;
 border-bottom: 1px solid black;
 color: black;
 }
-
-
 
 
 #user_table {
@@ -141,6 +172,28 @@ color: black;
   color: black;
 }
 
+.return_to_toc {
+  font-size: 10px;
+}
+
+.return_to_toc a:visited{
+  color: black;
+  text-decoration: none;
+}
+.return_to_toc a:link{
+  color: black;
+  text-decoration: none;;
+}
+
+.title_toc_wrap{
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+div.case_row>div:nth-of-type(odd) {
+  background-color: #f2f2f2;
+}
 
 @page {
   margin: 10mm;
@@ -155,6 +208,6 @@ color: black;
 @page horizontal_page {
   size: landscape;
 }
-.landscape {
+/* .landscape {
   page: horizontal_page;
-}
+} */

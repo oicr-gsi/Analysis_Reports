@@ -15,13 +15,17 @@
         </tr>
    </table>
    
+   <p style="font-size: 12px;">{{ header.blurb }}</p>
+
    <table id="project_table">
         <tr>
             <th>Project Code</th>
-            <th>Date</th>     
+            <th>Release</th>
+            <th>Date of Report Generation</th>     
         </tr>    
             <tr>       
-            <td> {{ header.project }} </td>      
+            <td> {{ header.project }} </td>
+            <td> {{ header.release }}</td>      
             <td> {{ header.date }} </td>
             </tr> 
    </table>
@@ -29,7 +33,7 @@
    <br>
    <br>
 
-   <h2 style="margin-left: 20px"><b>Contents</b></h2>
+   <h2 style="margin-left: 20px" id="toc"><b>Contents</b></h2>
     {% for section in sections %}
         <div class="toc-row"><a href="#{{ section }}"> {{ loop.index}}. {{ sections[section].title }}</a></div>
         {% if sections[section].tables|length > 1 %}
@@ -41,40 +45,75 @@
    <div style="page-break-after: always;"></div>
 
     {% for section in sections %}
-        <h2 id="{{ section }}">{{ loop.index }}. {{ sections[section].title }}</h2>
+        <div class="title_toc_wrap">
+            <h2 id="{{ section }}">{{ loop.index }}. {{ sections[section].title }}</h2>
+            <div class="return_to_toc"><a href="#toc"><b>Contents &#8593</b></a></div>
+        </div>
+
         <p>{{ sections[section].blurb }}</p>
+
         {% for table in sections[section].tables %}
             {% if sections[section].tables|length > 1 %}        
                 <h3 id="{{ section }}_{{ table }}">{{ sections[section].tables[table].title }}</h3>
             {% endif %}
             <p>{{ sections[section].tables[table].blurb }}</p>
-            <table id="info_table", style="font-size: 9px;">
-                <tr>
-                    {% for heading in sections[section].tables[table].headings %}
-                        <th>{{ sections[section].tables[table]["headings"][heading] }}</th>
+
+            {% if section == "cases" %}
+                <table class="case_table" style="font-size: 9px;">
+                    <tr>
+                        {% for heading in sections[section].tables[table].headings %}
+                            <th>{{ sections[section].tables[table]["headings"][heading] }}</th>
+                        {% endfor %}
+                    </tr>  
+                    {% for entry in sections[section].tables[table]["data"] %}
+                        {% set outer_loop = loop %}              
+                            {% for id in entry %}
+                                {% for row in entry[id] %}
+                                    <tr style="page-break-inside: avoid;" class="{{ outer_loop.cycle('odd', 'even') }}">       
+                                        {% for heading in sections[section].tables[table]["headings"] %}
+                                            {% if row[heading] is number %}
+                                                <td>{{ "{:,}".format(row[heading]) }}</td>
+                                            {% else %}     
+                                                <td style="word-break:break-all;"> {{ row[heading] }}</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
                     {% endfor %}
-                </tr>  
+                </table>
+            {% else %}
 
-                {% for entry in sections[section].tables[table]["data"] %}
-                    <tr style="page-break-inside: avoid;">       
-                        {% if entry %}
-                            {% for heading in sections[section].tables[table]["headings"] %}
-                                {% if entry[heading] is number %}
-                                    <td>{{ "{:,}".format(entry[heading]) }}</td>
-                                {% else %}     
-                                    <td style="word-break:break-all;"> {{ entry[heading] }}</td>
-                                {% endif %}
+                <table class="info_table", style="font-size: 9px;">
+                    <tr>
+                        {% for heading in sections[section].tables[table].headings %}
+                            <th>{{ sections[section].tables[table]["headings"][heading] }}</th>
+                        {% endfor %}
+                    </tr>  
 
-                            {% endfor %}
-                        {% else %}
-                            <td>{{ id }}</td>
-                                {% for i in range (sections[section].tables[table].headings|length - 1) %}
-                            <td> — </td>
-                            {% endfor %}
-                        {% endif %}
-                    </tr>
-                {% endfor %}
-            </table>
+                    {% for entry in sections[section].tables[table]["data"] %}
+                        <tr style="page-break-inside: avoid;">       
+                            {% if entry %}
+                                {% for heading in sections[section].tables[table]["headings"] %}
+                                    {% if entry[heading] is number %}
+                                        <td>{{ "{:,}".format(entry[heading]) }}</td>
+                                    {% else %}     
+                                        <td style="word-break:break-all;"> {{ entry[heading] }}</td>
+                                    {% endif %}
+
+                                {% endfor %}
+                            {% else %}
+                                <td>{{ id }}</td>
+                                    {% for i in range (sections[section].tables[table].headings|length - 1) %}
+                                <td> — </td>
+                                {% endfor %}
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
+                </table>
+            
+            {% endif%}
             
             {% for entry in sections[section].tables[table].glossary %}
                 <p style="font-size:6px;"><b>{{ sections[section].tables[table].headings[entry] }}</b>: {{ sections[section].tables[table].glossary[entry] }}</p>
