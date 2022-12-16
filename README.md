@@ -1,37 +1,48 @@
 # Analysis_Reports
 
-# Introduction #
+## Introduction ##
 This repository provides a script `ar.py` to generate analysis reports to accompany released data.
 
 
-# Getting Started #
+## Getting Started ##
 
-## Installation ##
+### Installation ###
 
 Clone this repository into a folder on the cluster.
-```git clone git@github.com:oicr-gsi/Analysis_Reports.git```
+```
+git clone git@github.com:oicr-gsi/Analysis_Reports.git
+```
 
-## Dependenices ##
+### Dependenices ###
 
 The file `requirements.txt` has the dependenices required for the script to work. It is recomended that you install these in a new python virtual environment. One option is to use [Anaconda](https://www.anaconda.com/), a popular package management software that was used in the development of this repository. 
 
 After installing Anaconda and setting up a new virtual environment, run the following command in the root directory of this repo
-```conda install --file requirements.txt```
+```
+conda install --file requirements.txt
+```
 
 If you opt to use a different package manager like `Pyenv`, you will most likely run 
-```pip install -r requirements.txt```
+```
+pip install -r requirements.txt
+```
 
-# Usage #
+## Usage ##
 
 Two examples of using the script are as follows
 
-``python3 generate.py -i infile.json -o outfile.pdf``
+1. ```
+python3 generate.py -i infile.json -o outfile.pdf
+```
 This will pull data from `infile.json` and, using data from production, will create an Analysis Report in the current directory named `outfile.pdf`
 
-``python3 generate.py -i infile.json -o /reports/outfile.pdf --stage``
+2. ```
+python3 generate.py -i infile.json -o /reports/outfile.pdf --stage
+```
 This will pull data from `infile.json` and, using data from stage, will create an Analysis Report in the folder `reports` directory named `outfile.pdf`.
 
-Parameters
+
+###Parameters###
 
 | argument | abbreviation| purpose | required/optional | default                                   |
 | ------- | ------- | ------------------------------------------ |
@@ -46,7 +57,7 @@ Parameters
 The basic structure is organized with sample ids, and workflow names and ids.
 
 ```
-{sample_id:
+{"cases":
    {workflow_1:
       {"workflow_id": "19168526", "workflow_version":"2.0.2"},
     workflow_2:

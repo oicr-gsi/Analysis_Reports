@@ -60,9 +60,9 @@ class Table:
         if plot in self.plots.keys():
             self.plots[plot].add_data(val, id)
     
-    def generate_plots(self):
-        for plot in self.plots.values():
-            plot.generate_plot(self.process)
+    # def generate_plots(self):
+    #     for plot in self.plots.values():
+    #         plot.generate_plot(self.process)
     
     def get_sample_id(self, cur, case, swid, pk, table_index=0):
         row = cur.execute(
@@ -99,11 +99,16 @@ class Table:
         for case in Table.cases:
             wfr = None
             for limkey, run_info in Table.data[case]["analysis"][self.pipeline_step].items():
-                if run_info["wf"] == self.process:
+                if run_info["wf"] in self.process:
                     wfr = limkey
             if not wfr:
                 raise Exception(f"No limkey found for {case} -- {self.process}")
 
+            # print(f"""
+            #     select {select_block}
+            #     from {self.source_table[0]}
+            #     where "Workflow Run SWID" like '%{wfr}%';
+            #     """)
             row = cur.execute(
                 f"""
                 select {select_block}
@@ -321,7 +326,7 @@ class DellyTable(Table):
         self.pipeline_step = "calls.structuralvariants"
         self.source_table = ["analysis_delly_analysis_delly_1"]
         self.source_db = "analysis_delly"
-        self.process = "delly_matched_by_tumor_group"
+        self.process = ["delly_matched_by_tumor_group", "delly"]
         self.plots = {
             DellyTableColumns.NumPASS: Plot(
                 title="SV PASS Calls",
@@ -369,7 +374,7 @@ class Mutect2Table(Table):
         self.pipeline_step = "calls.mutations"
         self.source_table = ["analysis_mutect2_analysis_mutect2_1"]
         self.source_db = "analysis_mutect2"
-        self.process = "mutect2_matched_by_tumor_group"
+        self.process = ["mutect2_matched_by_tumor_group", "mutect2"]
         self.plots = {
             Mutect2TableColumns.NumPASS: Plot(
                 title="Mutation Calls",
@@ -419,7 +424,7 @@ class RSEMTable(Table):
         self.pipeline_step = "calls.expression"
         self.source_table = ["analysis_rsem_analysis_rsem_1"]
         self.source_db = "analysis_rsem"
-        self.process = "rsem"
+        self.process = ["rsem"]
         self.plots = {
             "pct_non_zero": Plot(
                 title="Percent Expressed",
@@ -458,7 +463,7 @@ class SequenzaTable(Table):
         self.pipeline_step = "calls.copynumber"
         self.source_table = ["analysis_sequenza_analysis_sequenza_alternative_solutions_1", "analysis_sequenza_analysis_sequenza_gamma_500_fga_1"]
         self.source_db = "analysis_sequenza"
-        self.process = "sequenza_by_tumor_group"
+        self.process = ["sequenza_by_tumor_group", "sequenza"]
         self.pct_stats = set(
             [
                SequenzaTableColumns.FGA, 
@@ -492,7 +497,7 @@ class SequenzaTable(Table):
         for case in Table.cases:
             wfr = None
             for limkey, run_info in Table.data[case]["analysis"][self.pipeline_step].items():
-                if run_info["wf"] == self.process:
+                if run_info["wf"] in self.process:
                     wfr = limkey
             if not wfr:
                 raise Exception(f"No limkey found for {case} -- {self.process}")
@@ -537,7 +542,7 @@ class StarFusionTable(Table):
         self.pipeline_step = "calls.fusions"
         self.source_table = ["analysis_starfusion_analysis_starfusion_1"]
         self.source_db = "analysis_starfusion"
-        self.process = "starfusion"
+        self.process = ["starfusion", "starFusion"]
         self.plots = {
             StarFusionTableColumns.NumRecords: Plot(
                 title="Fusion Calls",
@@ -578,7 +583,7 @@ class WGCallReadyTable(SeqTable):
         }
         self.source_table = ["bamqc4merged_bamqc4merged_5"]
         self.source_db = "bamqc4merged"
-        self.process = "bamMergePreprocessing_by_tumor_group"
+        self.process = ["bamMergePreprocessing_by_tumor_group"]
         self.pct_stats = set(
             [
                 WGCallReadyTableColumns.MarkDupPctDup,
@@ -693,7 +698,7 @@ class WGLaneLevelTable(SeqTable):
         self.pipeline_step = "alignments_WG.lanelevel"
         self.source_table = ["dnaseqqc_dnaseqqc_5", "bamqc4_bamqc4_5"]
         self.source_db = ["dnaseqqc", "bamqc4"]
-        self.process = "bwaMem"
+        self.process = ["bwaMem"]
         self.pct_stats = set(
             [
                 WGLaneLevelTableColumns.MarkDupPctDup,
@@ -873,7 +878,7 @@ class WTCallReadyTable(SeqTable):
         self.pipeline_step = "alignments_WT.callready"
         self.source_table = ["rnaseqqc2merged_rnaseqqc2merged_2"]
         self.source_db = "rnaseqqc2merged"
-        self.process = "star_call_ready"
+        self.process = ["star_call_ready", "STAR"]
         self.plots = {
             WTCallReadyTableColumns.PctCodingBases: SeqPlot(
                 title="Percent Coding",
@@ -969,7 +974,7 @@ class WTLaneLevelTable(SeqTable):
         }
         self.source_table = ["rnaseqqc2_rnaseqqc2_2"]
         self.source_db = "rnaseqqc2"
-        self.process = "star_lane_level"
+        self.process = ["star_lane_level", "STAR"]
         self.pipeline_step = "alignments_WT.lanelevel"
         self.pct_stats = set(
             [
