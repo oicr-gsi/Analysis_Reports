@@ -17,7 +17,7 @@ from table_columns import (
 )
 from plot import (
     Plot,
-    WGLaneLevelPlot,
+    SeqPlot,
 )
 
 class Table:
@@ -97,9 +97,12 @@ class Table:
         data = []
 
         for case in Table.cases:
-            wfr = list(
-                Table.data[case]["analysis"][self.pipeline_step][self.process].keys()
-            )[0]
+            wfr = None
+            for limkey, run_info in Table.data[case]["analysis"][self.pipeline_step].items():
+                if run_info["wf"] == self.process:
+                    wfr = limkey
+            if not wfr:
+                raise Exception(f"No limkey found for {case} -- {self.process}")
 
             row = cur.execute(
                 f"""
@@ -127,6 +130,26 @@ class Table:
             "glossary": self.glossary,
         }
         return context
+
+class SeqTable(Table):
+    def add_plot_data(self, plot, sample_type, val, id):
+            if plot in self.plots.keys():
+                self.plots[plot].add_data(sample_type, val, id)
+
+    def get_row_data(self, indices, row, table_cols, entry, sample_type):
+        for column in self.columns.keys():
+            entry[column] = (
+                row[indices[column]] * 100
+                if column in self.pct_stats
+                else row[indices[column]]
+            )
+            entry[column] = (
+                entry[column]
+                if isinstance(entry[column], str)
+                else round(entry[column], 2)
+            )
+            self.add_plot_data(column, sample_type, entry[column], entry[table_cols.Case])
+        return entry
 
 class CasesTable(Table):
     def __init__(self):
@@ -219,8 +242,6 @@ class CasesTable(Table):
             context = {
                 case_id: []
             }
-            print("$$$$$$$$$$$$$$$$$$$")
-            print(case_id)
             ids = (
                 list(case["WG"]["Normal"].keys())
                 + list(case["WG"]["Tumour"].keys())
@@ -254,7 +275,7 @@ class CasesTable(Table):
                 glossary[CasesTableColumns.LibraryDesign][metadata[metadata_indices["lib"]]] = library_design[metadata[metadata_indices["lib"]]]
 
             data.append(context)
-            print(metadata[metadata_indices["tiss_type"]])
+            # print(metadata[metadata_indices["tiss_type"]])
 
             for key, value in glossary.items():
                 self.glossary[key] = ", ".join(_get_glossary_string(value)) + "."
@@ -271,7 +292,7 @@ class CasesTable(Table):
             "blurb": self.blurb,
             "glossary": self.glossary,
         }
-        print(self.glossary)
+        # print(self.glossary)
         return context
 
 class DellyTable(Table):
@@ -469,7 +490,12 @@ class SequenzaTable(Table):
         select_block, indices = self.get_select()
         data = []
         for case in Table.cases:
-            wfr = list(Table.data[case]["analysis"][self.pipeline_step][self.process].keys())[0]
+            wfr = None
+            for limkey, run_info in Table.data[case]["analysis"][self.pipeline_step].items():
+                if run_info["wf"] == self.process:
+                    wfr = limkey
+            if not wfr:
+                raise Exception(f"No limkey found for {case} -- {self.process}")
             entry = {}
             entry[SequenzaTableColumns.Case] = case
             entry[SequenzaTableColumns.SampleID] = self.get_sample_id(cur, case, wfr, "Workflow Run SWID")
@@ -520,7 +546,7 @@ class StarFusionTable(Table):
             )
         }
 
-class WGCallReadyTable(Table):
+class WGCallReadyTable(SeqTable):
     def __init__(self):
         self.title = "Whole Genome Libraries, tumour and matched normal"
         self.blurb = ""
@@ -560,30 +586,34 @@ class WGCallReadyTable(Table):
             ]
         )
         self.plots = {
-            WGCallReadyTableColumns.CoverageDedup: Plot(
+            WGCallReadyTableColumns.CoverageDedup: SeqPlot(
                 "Coverage Depth",
                 "Sample ID",
                 "Coverage Depth",
             ),
-            WGCallReadyTableColumns.MarkDupPctDup: Plot(
+            WGCallReadyTableColumns.MarkDupPctDup: SeqPlot(
                 "Duplication",
                 "Sample ID",
                 "Duplication (%)",
                 hi=100,
                 lo=0,
             ),
-            WGCallReadyTableColumns.TotalClusters: Plot(
+            WGCallReadyTableColumns.TotalClusters: SeqPlot(
                 "Read Pairs",
                 "Sample ID",
                 "Read Pairs",
             ),
-            WGCallReadyTableColumns.MappedReads: Plot(
+            WGCallReadyTableColumns.MappedReads: SeqPlot(
                 "Mapped Reads",
                 "Sample ID",
                 "Mapped Reads (%)",
                 hi=100,
                 lo=0,
             )
+        }
+        self.sample_types = {
+            "Normal": "Matched Normal",
+            "Tumour": "Tumour",
         }
 
     def get_data(self):
@@ -593,13 +623,12 @@ class WGCallReadyTable(Table):
         select_block, indices = self.get_select()
         data = []
 
-        sample_types = {
-            "Normal": "Matched Normal",
-            "Tumour": "Tumour",
-        }
-
+        # print(Table.cases)
         for case in Table.cases:
-            for stype, display_type in sample_types.items():
+            context = {
+                case: []
+            }
+            for stype, display_type in self.sample_types.items():
                 lims_keys = []
                 for key in Table.data[case]["WG"][stype].keys():
                     lims_keys = lims_keys + list(Table.data[case]["WG"][stype][key].keys())
@@ -624,15 +653,16 @@ class WGCallReadyTable(Table):
                 entry[WGCallReadyTableColumns.SampleType] = display_type
                 entry[WGCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")                
                 entry[WGCallReadyTableColumns.NumLimsKeys] = len(lims_keys)
-                data.append(self.get_row_data(indices, row, WGCallReadyTableColumns, entry))
-        
+                context[case].append(self.get_row_data(indices, row, WGCallReadyTableColumns, entry, stype))
+            data.append(context)
         cur.close()
         con.close()
+        data = sorted(data, key=lambda d: list(d.keys()))
         return data
 
-class WGLaneLevelTable(Table):
+class WGLaneLevelTable(SeqTable):
     def __init__(self):
-        self.title = "Whole Genome LIbraries, tumour and matched normal"
+        self.title = "Whole Genome Libraries, tumour and matched normal"
         self.blurb = ""
         self.headings = {
             WGLaneLevelTableColumns.Case: "Case",
@@ -671,35 +701,39 @@ class WGLaneLevelTable(Table):
             ]
         )
         self.plots = {
-            WGLaneLevelTableColumns.CoverageDedup: WGLaneLevelPlot(
+            WGLaneLevelTableColumns.CoverageDedup: SeqPlot(
                 title="Coverage Depth",
                 x_axis="Sample ID",
                 y_axis="Coverage Depth",
             ),
-            WGLaneLevelTableColumns.InsertSizeAvg: WGLaneLevelPlot(
+            WGLaneLevelTableColumns.InsertSizeAvg: SeqPlot(
                 title="Insert Size",
                 x_axis="Sample ID",
                 y_axis="Insert Size",
             ),
-            WGLaneLevelTableColumns.MarkDupPctDup: WGLaneLevelPlot(
+            WGLaneLevelTableColumns.MarkDupPctDup: SeqPlot(
                 title="Duplication",
                 x_axis="Sample ID",
                 y_axis="Duplication (%)",
                 hi=100,
                 lo=0,
             ),
-            WGLaneLevelTableColumns.TotalClusters: WGLaneLevelPlot(
+            WGLaneLevelTableColumns.TotalClusters: SeqPlot(
                 title="Read Pairs",
                 x_axis="Sample ID",
                 y_axis="Read Pairs",
             ),
-            WGLaneLevelTableColumns.MappedReads: WGLaneLevelPlot(
+            WGLaneLevelTableColumns.MappedReads: SeqPlot(
                 title="Mapped Reads",
                 x_axis="Sample ID",
                 y_axis="Mapped Reads (%)",
                 hi=100,
                 lo=0,
             ),
+        }
+        self.sample_types = {
+            "Normal": "Matched Normal",
+            "Tumour": "Tumour",
         }
 
 
@@ -719,25 +753,6 @@ class WGLaneLevelTable(Table):
             """).fetchall()
         return rows
 
-    def get_row_data(self, indices, row, table_cols, entry, sample_type):
-        for column in self.columns.keys():
-            entry[column] = (
-                row[indices[column]] * 100
-                if column in self.pct_stats
-                else row[indices[column]]
-            )
-            entry[column] = (
-                entry[column]
-                if isinstance(entry[column], str)
-                else round(entry[column], 2)
-            )
-            self.add_plot_data(column, sample_type, entry[column], entry[table_cols.Case])
-        return entry
-
-    def add_plot_data(self, plot, sample_type, val, id):
-        if plot in self.plots.keys():
-            self.plots[plot].add_data(sample_type, val, id)
-
     def get_data(self):
         dnaseqqc_con = sqlite3.connect(
             self.base_db_path
@@ -755,13 +770,13 @@ class WGLaneLevelTable(Table):
 
         select_block, indices = self.get_select()
         data = []
-        sample_types = {
-            "Normal": "Matched Normal",
-            "Tumour": "Tumour",
-        }
+
 
         for case in Table.cases:
-            for stype, display_type in sample_types.items():
+            context = {
+                case: []
+            }
+            for stype, display_type in self.sample_types.items():
                 lims_keys = []
                 for key in Table.data[case]["WG"][stype].keys():
                     lims_keys = lims_keys + list(
@@ -799,7 +814,7 @@ class WGLaneLevelTable(Table):
                     ) = self.get_sample_id(stype, case, lims)
                     entry[WGLaneLevelTableColumns.Case] = case
                     entry[WGLaneLevelTableColumns.SampleType] = display_type              
-                    data.append(
+                    context[case].append(
                         self.get_row_data(
                             indices,
                             rows[0],
@@ -808,17 +823,18 @@ class WGLaneLevelTable(Table):
                             stype,
                         )
                     )
-
+            data.append(context)
         dnaseqqc_cur.close()
         dnaseqqc_con.close()
         bamqc4_cur.close()
         bamqc4_con.close()
+        data = sorted(data, key=lambda d: list(d.keys()))
 
         return data
 
-class WTCallReadyTable(Table):
+class WTCallReadyTable(SeqTable):
     def __init__(self):
-        self.title = "Whole Transcriptome, Tumour Samples"
+        self.title = "Whole Transcriptome Libraries, tumour only"
         self.blurb = ""
         self.headings = {
             WTCallReadyTableColumns.Case: "Case",
@@ -859,32 +875,35 @@ class WTCallReadyTable(Table):
         self.source_db = "rnaseqqc2merged"
         self.process = "star_call_ready"
         self.plots = {
-            WTCallReadyTableColumns.PctCodingBases: Plot(
+            WTCallReadyTableColumns.PctCodingBases: SeqPlot(
                 title="Percent Coding",
                 x_axis="Sample ID",
                 y_axis="Percent Coding (%)",
                 hi=100,
                 lo=0,
             ),
-            WTCallReadyTableColumns.TotalClusters: Plot(
+            WTCallReadyTableColumns.TotalClusters: SeqPlot(
                 title="Read Pairs",
                 x_axis="Sample ID",
                 y_axis="Read Pairs",
             ),
-            WTCallReadyTableColumns.MappedReads: Plot(
+            WTCallReadyTableColumns.MappedReads: SeqPlot(
                 title="Mapped Reads",
                 x_axis="Sample ID",
                 y_axis="Mapped Reads (%)",
                 hi=100,
                 lo=0,
             ),
-            WTCallReadyTableColumns.RRNAContamination: Plot(
+            WTCallReadyTableColumns.RRNAContamination: SeqPlot(
                 title="rRNA Contamination",
                 x_axis="Sample ID",
                 y_axis="rRNA Contamination (%)",
                 hi=100,
                 lo=0,
             ),
+        }
+        self.sample_types = {
+            "Tumour": "Tumour",
         }
 
     def get_data(self):
@@ -895,26 +914,27 @@ class WTCallReadyTable(Table):
         data = []
 
         for case in Table.cases:
-            limskeys = list(Table.data[case]["analysis"][self.pipeline_step][self.process].values())[0]["limkeys"].split(':')
-            limskeys.sort()
-            lims = "[\"" + "\", \"".join(limskeys) + "\"]"
+            for stype in self.sample_types.keys():
+                limskeys = list(Table.data[case]["analysis"][self.pipeline_step].values())[0]["limkeys"].split(':')
+                limskeys.sort()
+                lims = "[\"" + "\", \"".join(limskeys) + "\"]"
 
-            row = cur.execute(
-                f"""
-                select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  = '{lims}';
-                """
-            ).fetchall()[0]
-            entry = {}
-            entry[WTCallReadyTableColumns.Case] = case
-            entry[WTCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")
-            entry[WTCallReadyTableColumns.NumLimsKeys] = len(limskeys)
-            data.append(self.get_row_data(indices, row, WTCallReadyTableColumns, entry))
-        
+                row = cur.execute(
+                    f"""
+                    select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  = '{lims}';
+                    """
+                ).fetchall()[0]
+                entry = {}
+                entry[WTCallReadyTableColumns.Case] = case
+                entry[WTCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")
+                entry[WTCallReadyTableColumns.NumLimsKeys] = len(limskeys)
+                data.append(self.get_row_data(indices, row, WTCallReadyTableColumns, entry, stype))
+            
         cur.close()
         con.close()
         return data
 
-class WTLaneLevelTable(Table):
+class WTLaneLevelTable(SeqTable):
     def __init__(self):
         self.title = "Whole Transcriptome Libraries, tumour only"
         self.blurb = ""
@@ -958,34 +978,37 @@ class WTLaneLevelTable(Table):
             ]
         )
         self.plots = {
-            WTLaneLevelTableColumns.PctCodingBases: Plot(
+            WTLaneLevelTableColumns.PctCodingBases: SeqPlot(
                 title="Percent Coding",
                 x_axis="Sample ID",
                 y_axis="Percent Coding (%)",
                 hi=100,
                 lo=0,
             ),
-            WTLaneLevelTableColumns.TotalClusters: Plot(
+            WTLaneLevelTableColumns.TotalClusters: SeqPlot(
                 title="Reads Pair",
                 x_axis="Sample ID",
                 y_axis="Reads Pair",
             ),
-            WTLaneLevelTableColumns.MappedReads: Plot(
+            WTLaneLevelTableColumns.MappedReads: SeqPlot(
                 title="Mapped Reads",
                 x_axis="Sample ID",
                 y_axis="Mapped Reads (%)",
                 hi=100,
                 lo=0,
             ),
-            WTLaneLevelTableColumns.RRNAContamination: Plot(
+            WTLaneLevelTableColumns.RRNAContamination: SeqPlot(
                 title="rRNA Contamination",
                 x_axis="Sample ID",
                 y_axis="rRNA Contamination (%)",
                 hi=100,
                 lo=0,
             ),
-
         }
+        self.sample_types = {
+            "Tumour": "Tumour",
+        }
+
     
     def get_sample_id(self, case, swid):
         lims_lane_mapping = Table.data[case]["WT"]["Tumour"]
@@ -1002,26 +1025,27 @@ class WTLaneLevelTable(Table):
         data = []
 
         for case in Table.cases:
-            lims_keys = []
-            for key in Table.data[case]["WT"]["Tumour"].keys():
-                lims_keys = lims_keys + list(Table.data[case]["WT"]["Tumour"][key].keys())
+            for stype in self.sample_types.keys():
+                lims_keys = []
+                for key in Table.data[case]["WT"]["Tumour"].keys():
+                    lims_keys = lims_keys + list(Table.data[case]["WT"]["Tumour"][key].keys())
 
-            for lims in lims_keys:
-                rows = cur.execute(
-                    f"""
-                    select {select_block} from {self.source_table[0]} where "Pinery Lims ID" = '{lims}';
-                    """).fetchall()
-                if len(rows) > 1:
-                    raise Exception(f"Multiple rows returned for limkeys {lims}")
-                
-                entry = {}
-                entry[WTLaneLevelTableColumns.Case] = case
-                entry[WTLaneLevelTableColumns.SampleID], entry[WTLaneLevelTableColumns.Lane] = self.get_sample_id(case, lims)
-                data.append(
-                    self.get_row_data(
-                    indices, rows[0], WTLaneLevelTableColumns, entry
+                for lims in lims_keys:
+                    rows = cur.execute(
+                        f"""
+                        select {select_block} from {self.source_table[0]} where "Pinery Lims ID" = '{lims}';
+                        """).fetchall()
+                    if len(rows) > 1:
+                        raise Exception(f"Multiple rows returned for limkeys {lims}")
+                    
+                    entry = {}
+                    entry[WTLaneLevelTableColumns.Case] = case
+                    entry[WTLaneLevelTableColumns.SampleID], entry[WTLaneLevelTableColumns.Lane] = self.get_sample_id(case, lims)
+                    data.append(
+                        self.get_row_data(
+                        indices, rows[0], WTLaneLevelTableColumns, entry, stype
+                        )
                     )
-                )
 
         cur.close()
         con.close()

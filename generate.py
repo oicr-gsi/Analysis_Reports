@@ -75,7 +75,7 @@ def generate_report(input, output, use_stage):
     infile = input if input else "IRIS.json"
     outfile = output if output else "Analysis_Report.pdf"
     table = Table(infile, use_stage) #initializing table data
-    print(table.data.keys())
+    # print(table.data.keys())
     report = Report(table.project, table.release)
 
     report.load_context()
@@ -83,9 +83,9 @@ def generate_report(input, output, use_stage):
     with open('meta_context.json', 'w', encoding='utf-8') as file:
         json.dump(report.context, file, ensure_ascii=False, indent=4)
     
-    # with open("IRIS-3.json") as f:
-    #     with open("input.json", "w") as input:
-    #         json.dump(json.load(f), input, indent=4)
+    with open("/.mounts/labs/gsiprojects/MOH/Analysis_Reports/byRelease/BIOCAN.Release.8.20221205.GBS-3779.json") as f:
+        with open("new_input.json", "w") as input:
+            json.dump(json.load(f), input, indent=4)
 
     environment = Environment(loader=FileSystemLoader("templates/"))
     results_template = environment.get_template("metadata.html")
