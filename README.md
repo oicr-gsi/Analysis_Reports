@@ -26,6 +26,7 @@ conda install --file requirements.txt
 ```
 
 If you opt to use a different package manager like `Pyenv`, you will most likely run 
+
 ```
 pip install -r requirements.txt
 ```
@@ -34,9 +35,14 @@ pip install -r requirements.txt
 
 Two examples of using the script are as follows:
 
+<<<<<<< Updated upstream
 <b>Example 1</b>
 ```
 python3 ar.py -i infile.json -o outfile.pdf
+=======
+```
+python3 generate.py -i infile.json -o outfile.pdf
+>>>>>>> Stashed changes
 ```
 This will pull data from `infile.json` and, using data from QC-ETL files located under `/scratch2/groups/gsi/production/qcetl_v1`, will create an Analysis Report in the current directory named `outfile.pdf`
 

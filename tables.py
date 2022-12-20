@@ -65,14 +65,18 @@ class Table:
     #         plot.generate_plot(self.process)
     
     def get_sample_id(self, cur, case, swid, pk, table_index=0):
-        row = cur.execute(
-            f"""
-            select "Tissue Type", "Tissue Origin", "Library Design", "Group ID"
-            from {self.source_table[table_index]}
-            where "{pk}" like '%{swid}%';
-            """
-        ).fetchall()[0]
-        return f"{case}_{row[0]}_{row[1]}_{row[2]}_{row[3]}"
+        try:
+            row = cur.execute(
+                f"""
+                select "Tissue Type", "Tissue Origin", "Library Design", "Group ID"
+                from {self.source_table[table_index]}
+                where "{pk}" like '%{swid}%';
+                """
+            ).fetchall()[0]
+            return f"{case}_{row[0]}_{row[1]}_{row[2]}_{row[3]}"
+        except:
+            print(f"No data found for {case}, where {pk} = {swid}")
+            return ("nd")
 
     def get_row_data(self, indices, row, table_cols, entry):
         for column in self.columns.keys():
@@ -87,6 +91,13 @@ class Table:
                 else round(entry[column], 2)
             )
             self.add_plot_data(column, entry[column], entry[table_cols.SampleID])
+        return entry
+
+    def get_nd_entry(self, indices, case, source_table):
+        print(f"No data found for {case} from {source_table}")
+        entry = {}
+        for column in indices.keys():
+            entry[column] = "nd"
         return entry
 
     def get_data(self):
@@ -109,17 +120,21 @@ class Table:
             #     from {self.source_table[0]}
             #     where "Workflow Run SWID" like '%{wfr}%';
             #     """)
-            row = cur.execute(
-                f"""
-                select {select_block}
-                from {self.source_table[0]}
-                where "Workflow Run SWID" like '%{wfr}%';
-                """
-            ).fetchall()[0]
-            entry = {}
-            entry[CommonColumns.Case] = case
-            entry[CommonColumns.SampleID] = self.get_sample_id(cur, case, wfr, "Workflow Run SWID")
-            data.append(self.get_row_data(indices, row, CommonColumns, entry))
+            try:
+                row = cur.execute(
+                    f"""
+                    select {select_block}
+                    from {self.source_table[0]}
+                    where "Workflow Run SWID" like '%{wfr}%';
+                    """
+                ).fetchall()[0]
+                entry = {}
+                entry[CommonColumns.Case] = case
+                entry[CommonColumns.SampleID] = self.get_sample_id(cur, case, wfr, "Workflow Run SWID")
+                data.append(self.get_row_data(indices, row, CommonColumns, entry))
+            except:
+                data.append(self.get_nd_entry(indices, case, self.source_table[0]))
+
         
         cur.close()
         con.close()
@@ -128,7 +143,6 @@ class Table:
     def load_context(self):
         context = {
             "title": self.title,
-            "columns": self.columns,
             "headings": self.headings,
             "data": self.get_data(),
             "blurb": self.blurb,
@@ -291,7 +305,6 @@ class CasesTable(Table):
     def load_context(self):
         context = {
             "title": self.title,
-            "columns": self.columns,
             "headings": self.headings,
             "data": self.get_data(),
             "blurb": self.blurb,
@@ -505,20 +518,29 @@ class SequenzaTable(Table):
             entry[SequenzaTableColumns.Case] = case
             entry[SequenzaTableColumns.SampleID] = self.get_sample_id(cur, case, wfr, "Workflow Run SWID")
 
-            row = cur.execute(
-                f"""
-                select fga from {self.source_table[1]} where "Workflow Run SWID" like '%{wfr}%';
-                """
-            ).fetchall()[0]
-            entry[SequenzaTableColumns.FGA] = round(row[0] * 100,2)            
-            self.add_plot_data(SequenzaTableColumns.FGA, entry[SequenzaTableColumns.FGA], entry["sample_id"])
-
-            row = cur.execute(
-                f"""
-                select {select_block} from {self.source_table[0]} where "Workflow Run SWID" like '%{wfr}%' and gamma = 500;
-                """
-            ).fetchall()[0]
-            data.append(self.get_row_data(indices, row, SequenzaTableColumns, entry))
+            try:
+                row = cur.execute(
+                    f"""
+                    select fga from {self.source_table[1]} where "Workflow Run SWID" like '%{wfr}%';
+                    """
+                ).fetchall()[0]
+                entry[SequenzaTableColumns.FGA] = round(row[0] * 100,2)            
+                self.add_plot_data(SequenzaTableColumns.FGA, entry[SequenzaTableColumns.FGA], entry["sample_id"])
+            except:
+                print(f"No data found for {case} in {self.source_table[1]}")
+                entry[SequenzaTableColumns.FGA] = "nd"
+            
+            try:
+                row = cur.execute(
+                    f"""
+                    select {select_block} from {self.source_table[0]} where "Workflow Run SWID" like '%{wfr}%' and gamma = 500;
+                    """
+                ).fetchall()[0]
+                data.append(self.get_row_data(indices, row, SequenzaTableColumns, entry))
+            except:
+                for column in indices.keys():
+                    print(f"No data found for {case} in {self.source_table[0]}")
+                    entry[column] = "nd"
         
         cur.close()
         con.close()
@@ -639,26 +661,23 @@ class WGCallReadyTable(SeqTable):
                     lims_keys = lims_keys + list(Table.data[case]["WG"][stype][key].keys())
                 lims_keys.sort()
                 lims = "[\"" + '\", \"'.join(lims_keys) + "\"]"
-                
-                row = cur.execute(
-                    f"""
-                    select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  like '%{lims}%';
-                    """
-                ).fetchall()
 
                 try:
-                    row = row[0]
+                    row = cur.execute(
+                        f"""
+                        select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  like '%{lims}%';
+                        """
+                    ).fetchall()[0]
+                    entry = {}
+                    entry[WGCallReadyTableColumns.Case] = case
+                    entry[WGCallReadyTableColumns.SampleType] = display_type
+                    entry[WGCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")                
+                    entry[WGCallReadyTableColumns.NumLimsKeys] = len(lims_keys)
+                    context[case].append(self.get_row_data(indices, row, WGCallReadyTableColumns, entry, stype))
                 except:
-                    print(f"""
-                    select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  like '%{lims}%';
-                    """)
+                    context[case].append(self.get_nd_entry(indices, case, self.source_table[0]))
 
-                entry = {}
-                entry[WGCallReadyTableColumns.Case] = case
-                entry[WGCallReadyTableColumns.SampleType] = display_type
-                entry[WGCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")                
-                entry[WGCallReadyTableColumns.NumLimsKeys] = len(lims_keys)
-                context[case].append(self.get_row_data(indices, row, WGCallReadyTableColumns, entry, stype))
+
             data.append(context)
         cur.close()
         con.close()
@@ -924,17 +943,20 @@ class WTCallReadyTable(SeqTable):
                 limskeys.sort()
                 lims = "[\"" + "\", \"".join(limskeys) + "\"]"
 
-                row = cur.execute(
-                    f"""
-                    select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  = '{lims}';
-                    """
-                ).fetchall()[0]
-                entry = {}
-                entry[WTCallReadyTableColumns.Case] = case
-                entry[WTCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")
-                entry[WTCallReadyTableColumns.NumLimsKeys] = len(limskeys)
-                data.append(self.get_row_data(indices, row, WTCallReadyTableColumns, entry, stype))
-            
+                try:
+                    row = cur.execute(
+                        f"""
+                        select {select_block} from {self.source_table[0]} where "Merged Pinery Lims ID"  = '{lims}';
+                        """
+                    ).fetchall()[0]
+                    entry = {}
+                    entry[WTCallReadyTableColumns.Case] = case
+                    entry[WTCallReadyTableColumns.SampleID] = self.get_sample_id(cur, case, lims, "Merged Pinery Lims ID")
+                    entry[WTCallReadyTableColumns.NumLimsKeys] = len(limskeys)
+                    data.append(self.get_row_data(indices, row, WTCallReadyTableColumns, entry, stype))
+                except:
+                    data.append(self.get_nd_entry(indices, case, self.source_table[0]))
+
         cur.close()
         con.close()
         return data
