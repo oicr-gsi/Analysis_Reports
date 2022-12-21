@@ -1,5 +1,4 @@
 from tables import (
-    Table,
     RSEMTable, 
     SequenzaTable,
     DellyTable,
@@ -11,20 +10,23 @@ from tables import (
     WTCallReadyTable,
     WGLaneLevelTable,
 )
-from typing import Dict, Type, List, Callable, Union, Tuple, Set, Any
+from typing import List, Any
 from datetime import date
 
-
+# Section class defines a section of the report
 class Section:
-    title: str
-    blurb: str
-    tables: List[Any]
-    name: str
-
-    def __init__(self):
-        pass
+    title: str  # title of section
+    blurb: str  # blurb of section
+    tables: List[Any] # tables of section
+    name: str   # name of section, used as key in context for jinja2 templating
 
     def load_context(self):
+        """
+        None -> dict
+
+        Returns a dict of the context of the section and its tables
+
+        """
         context = {
             "title": self.title,
             "blurb": self.blurb,
@@ -36,9 +38,9 @@ class Section:
             context["tables"][tcount]["plots"] = {}
             for pcount, (column, plot) in enumerate(table.plots.items()):
                 context["tables"][tcount]["plots"][pcount] = plot.load_context(f"{table.process}_{column}")
-
         return context
 
+#CallReadyAlignmentsSection class defines the section for call ready alignments
 class CallReadyAlignmentsSection(Section):
     def __init__(self):
         self.title = "Call Ready Alignments"
@@ -51,6 +53,7 @@ class CallReadyAlignmentsSection(Section):
             WTCallReadyTable(),
         ]
 
+#CasesSection class defines the section for cases
 class CasesSection(Section):
     def __init__(self):
         self.title = "Cases"
@@ -62,6 +65,7 @@ class CasesSection(Section):
             CasesTable(),
         ]
 
+# DellySection class defines the section for delly workflow
 class DellySection(Section):
     def __init__(self):
         self.title = "Genomic Structural Variants"
@@ -74,6 +78,7 @@ class DellySection(Section):
             DellyTable(),
         ]
 
+# HeaderSection class defines the header of the report
 class HeaderSection(Section):
     def __init__(self, project, release):
         self.project = project
@@ -88,6 +93,12 @@ class HeaderSection(Section):
         """
         
     def load_context(self):
+        """
+        None -> dict
+
+        Returns a dict of the context of the section
+
+        """
         context = {
             "project": self.project,
             "date": date.today().strftime("%Y-%m-%d"),
@@ -96,7 +107,8 @@ class HeaderSection(Section):
             "release": self.release,
         }
         return context
-        
+    
+#Mutect2Section class defines the section for the mutect2 workflow
 class Mutect2Section(Section):
     def __init__(self):
         self.title = "Mutations"
@@ -109,6 +121,7 @@ class Mutect2Section(Section):
             Mutect2Table(),
         ]
 
+#RawSeqDataSection class defines the section for raw sequence data
 class RawSeqDataSection(Section):
     def __init__(self):
         self.title = "Raw Sequence Data"
@@ -120,7 +133,8 @@ class RawSeqDataSection(Section):
             WGLaneLevelTable(),
             WTLaneLevelTable(),
         ]
-    
+
+#RSEMSection class defines the section for RSEM workflow
 class RSEMSection(Section):
     def __init__(self):
         self.title = "Gene Expression"
@@ -133,7 +147,8 @@ class RSEMSection(Section):
         self.tables = [
             RSEMTable(),
         ]
-    
+
+#SequenzaSection class defines the section for Sequenza
 class SequenzaSection(Section):
     def __init__(self):
         self.title = "Copy Number Alterations"
@@ -148,6 +163,7 @@ class SequenzaSection(Section):
             SequenzaTable(),
         ]
 
+#StarFusionSection class defines the section for StarFusion
 class StarFusionSection(Section):
     def __init__(self):
         self.title = "Gene Fusions"

@@ -1,21 +1,7 @@
-import json
-from jinja2 import Environment, FileSystemLoader
-import pandas as pd
-import matplotlib.pyplot as plt
-import sqlite3
-
 import argparse
-import os
-import numpy as np
-import time
-import math
-import requests
-import gzip
-import sys
-import pathlib
+from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 from weasyprint import CSS
-from typing import Dict, Type, List, Callable, Union, Tuple, Set, Any
 from section import (
     RSEMSection,
     SequenzaSection,
@@ -30,17 +16,12 @@ from section import (
 
 from tables import Table
 
-
-db = f"/.mounts/labs/gsiprojects/gsi/gsiusers/jqian/gsi-qc-etl/gsiqcetl/"
-
-
+# Report class outlines the structure and order or a report
 class Report:
     def __init__(self, project, release):
-        self.data = {}
-        self.sample_ids = []
-        self.context = {"sections":{}, "header": {}}
-        self.header = HeaderSection(project, release)
-        self.sections = [
+        self.context = {"sections":{}, "header": {}} #context to be passed to jinja2 templating
+        self.header = HeaderSection(project, release) 
+        self.sections = [ #sections will appear in the following order in the report
             CasesSection(),
             RawSeqDataSection(),
             CallReadyAlignmentsSection(),
@@ -52,6 +33,11 @@ class Report:
         ]
 
     def load_context(self):
+        """
+        None -> None
+    
+        Get the data and load it into a context dict for jinja2 to generate html
+        """
         self.context["header"] = self.header.load_context()
         for section in self.sections:
             self.context["sections"][section.name] = section.load_context()
@@ -71,40 +57,44 @@ def makepdf(html, outputfile):
     htmldoc = HTML(string=html, base_url=__file__)
     htmldoc.write_pdf(outputfile, stylesheets=[CSS('./static/css/style.css')], presentational_hints=True)
 
+
 def generate_report(input, output, use_stage):
-    infile = input if input else "IRIS.json"
+    """
+    (str, str, bool) -> None
+    
+    Generates a report using data from input file to output file. use_stage indicates if
+    data should be pulled from production or stage
+      
+    Parameters
+    ----------
+    - input (str): name of input file
+    - output (str): name of the output PDF file
+    - use_stage: set to True if using data from staging
+    """
+    infile = input if input else "ar_input.json"
     outfile = output if output else "Analysis_Report.pdf"
     table = Table(infile, use_stage) #initializing table data
-    # print(table.data.keys())
-    report = Report(table.project, table.release)
+    report = Report(table.project, table.release) #initialize report structure
 
     report.load_context()
 
-    with open('meta_context.json', 'w', encoding='utf-8') as file:
-        json.dump(report.context, file, ensure_ascii=False, indent=4)
-    
-    with open("/.mounts/labs/gsiprojects/MOH/Analysis_Reports/byRelease/BIOCAN.Release.8.20221205.GBS-3779.json") as f:
-        with open("new_input.json", "w") as input:
-            json.dump(json.load(f), input, indent=4)
+    # used to debug issues with context
+    # with open('ar_context.json', 'w', encoding='utf-8') as file:
+    #     json.dump(report.context, file, ensure_ascii=False, indent=4)
 
     environment = Environment(loader=FileSystemLoader("templates/"))
-    results_template = environment.get_template("metadata.html")
+    results_template = environment.get_template("base.html")
 
     contents = results_template.render(report.context)
-
-    with open("meta_report.html", "w", encoding="utf-8") as results:
-        results.write(contents)
-        print("wrote to sample_report.html")
     
     makepdf(contents, outfile)
-    print(f"created report {outfile}")
+    print(f"Created report {outfile}")
 
 
 if __name__ == "__main__":
-    print("starting")
-
+    #create parser for command line args
     parser = argparse.ArgumentParser(
-        description="Generates a MOH Data Release Report"
+        description="Generates a Analysis Data Release Report"
     )
 
     parser.add_argument(
@@ -127,8 +117,9 @@ if __name__ == "__main__":
         action="store_true",
         help="Use qcetl data from stage",
     )
+
     args = parser.parse_args()
 
-    print(args)
+    print(f"Reading input from {args.infile}")
 
     generate_report(input=args.infile, output=args.outfile, use_stage=args.stage)

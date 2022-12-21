@@ -1,5 +1,4 @@
 # Analysis Reports #
-THIS PAGE IS UNDER CONSTRUCTION
 
 ## Introduction ##
 This repository provides a script `ar.py` to generate analysis reports to accompany released data.
@@ -35,14 +34,9 @@ pip install -r requirements.txt
 
 Two examples of using the script are as follows:
 
-<<<<<<< Updated upstream
 <b>Example 1</b>
 ```
 python3 ar.py -i infile.json -o outfile.pdf
-=======
-```
-python3 generate.py -i infile.json -o outfile.pdf
->>>>>>> Stashed changes
 ```
 This will pull data from `infile.json` and, using data from QC-ETL files located under `/scratch2/groups/gsi/production/qcetl_v1`, will create an Analysis Report in the current directory named `outfile.pdf`
 
@@ -60,7 +54,7 @@ This will pull data from `infile.json` and, using data from QC-ETL files located
 | argument | abbreviation| purpose | required/optional | default|
 | -------- | ----------- | --------|------------------ |--------|
 | --infile | -i| The input file to be read| required | ar_input.json |
-| --outfile | -o | Name of the report generated | required | "ar_report.pdf"  |
+| --outfile | -o | Name of the report generated | required | "Analysis_Report.pdf"  |
 | --staging, --stage | |If used, data will be pulled from stage. optional | Leaving out the flag will pull data from production |
 
 
