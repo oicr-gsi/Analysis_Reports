@@ -1,3 +1,4 @@
+import os
 import argparse
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
@@ -53,9 +54,11 @@ def makepdf(html, outputfile):
     - html (str) String of formated HTML
     - outputfile (str): Name of the output PDF file
     """
+
+    css_file = os.path.join(os.path.dirname(__file__), './static/css/style.css')
     
     htmldoc = HTML(string=html, base_url=__file__)
-    htmldoc.write_pdf(outputfile, stylesheets=[CSS('./static/css/style.css')], presentational_hints=True)
+    htmldoc.write_pdf(outputfile, stylesheets=[CSS(css_file)], presentational_hints=True)
 
 
 def generate_report(input, output, use_stage):
@@ -82,7 +85,8 @@ def generate_report(input, output, use_stage):
     # with open('ar_context.json', 'w', encoding='utf-8') as file:
     #     json.dump(report.context, file, ensure_ascii=False, indent=4)
 
-    environment = Environment(loader=FileSystemLoader("templates/"))
+    template_dir = os.path.join(os.path.dirname(__file__), './templates')
+    environment = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
     results_template = environment.get_template("base.html")
 
     contents = results_template.render(report.context)
