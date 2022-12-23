@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="./static/css/style.css">
+    <title>analysis_report</title>
+</head>
+<body style="margin-left:5mm">
+    <table style="width:100%; font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
+        <tr>
+            <td style="width: 40%; padding: 3px; text-align: left"><img src="./static/images/OICR_Logo_RGB_ENGLISH.png" alt="OICR_logo" title="OICR_logo" style="padding-right: 8px; padding-left:0px; width:10; height:10"></td>
+            <td style="width: 60%; padding: 3px; text-align: left">
+                <p style="text-align: center; color: black; font-size:30px; font-family: Arial, Verdana, sans-serif; font-weight:600">{{ header.title }} Data Release Report</p>
+            </td>
+        </tr>
+   </table>
+   
+   <p style="font-size: 12px;">{{ header.blurb }}</p>
+
+   <table id="project_table">
+        <tr>
+            <th>Project Code</th>
+            <th>Release</th>
+            <th>Date of Report Generation</th>     
+        </tr>    
+            <tr>       
+            <td> {{ header.project }} </td>
+            <td> {{ header.release }}</td>      
+            <td> {{ header.date }} </td>
+            </tr> 
+   </table>
+   <br>
+   <br>
+   <br>
+
+   <h2 style="margin-left: 20px" id="toc"><b>Contents</b></h2>
+    {% for section in sections %}
+        <div class="toc-row"><a href="#{{ section }}"> {{ loop.index}}. {{ sections[section].title }}</a></div>
+        {% if sections[section].tables|length > 1 %}
+            {% for table in sections[section].tables %}     
+                <div class="toc-row" style="margin-left:100px"><a href="#{{ section }}_{{ table }}"> {{ sections[section].tables[table].title }}</a></div>
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+   <div style="page-break-after: always;"></div>
+
+    {% for section in sections %}
+        <div class="landscape">
+            <div class="title_toc_wrap">
+                <h2 id="{{ section }}">{{ loop.index }}. {{ sections[section].title }}</h2>
+                <div class="return_to_toc"><a href="#toc"><b>Contents &#8593</b></a></div>
+            </div>
+            <p>{{ sections[section].blurb }}</p>
+        </div>
+
+        {% for table in sections[section].tables %}
+            <div class="landscape">
+                {% if sections[section].tables|length > 1 %}        
+                    <h3 id="{{ section }}_{{ table }}">{{ sections[section].tables[table].title }}</h3>
+                {% endif %}
+                <p>{{ sections[section].tables[table].blurb }}</p>
+            
+                <table class="case_table" style="font-size: 9px;">
+                    <tr>
+                        {% for heading in sections[section].tables[table].headings %}
+                            <th>{{ sections[section].tables[table]["headings"][heading] }}</th>
+                        {% endfor %}
+                    </tr>  
+                    {% for entry in sections[section].tables[table]["data"] %}
+                        {% set outer_loop = loop %}              
+                            {% for id in entry %}
+                                {% for row in entry[id] %}
+                                    <tr style="page-break-inside: avoid;" class="{{ outer_loop.cycle('odd', 'even') }}">       
+                                        {% for heading in sections[section].tables[table]["headings"] %}
+                                            {% if row[heading] is number %}
+                                                <td>{{ "{:,}".format(row[heading]) }}</td>
+                                            {% elif heading == "case" %}     
+                                                <td style="word-break: keep-all;">{{ row[heading] }}</td>
+                                            {% else %}     
+                                                <td style="word-break:break-all;"> {{ row[heading] }}</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    {% endfor %}
+                </table>
+                
+                {% for entry in sections[section].tables[table].glossary %}
+                    <p style="font-size:6px;"><b>{{ sections[section].tables[table].headings[entry] }}</b>: {{ sections[section].tables[table].glossary[entry] }}</p>
+                {% endfor %}
+
+                <div style="page-break-after: always;"></div>
+            </div>
+        
+            {% if sections[section].tables[table].plots %}
+                <h3>{{ sections[section].tables[table].title }} Plots</h3>
+                    {% for plot in sections[section].tables[table].plots %}
+                        <div style="page-break-inside: avoid;">
+                            <p style="font-size: 14px;font-weight: 600;">Figure {{ loop.index }}. Plot of {{ sections[section].tables[table].plots[plot].title }}</p>
+                            <br>
+                            <img src="{{ sections[section].tables[table].plots[plot].fig_path }}"></img>
+                        </div>
+        
+                    {% endfor %}
+                    <div style="page-break-after: always;"></div>
+            {% endif %}                
+        {% endfor %}
+
+    {% endfor %}
+</body>
+</html
