@@ -2,6 +2,8 @@ from typing import Dict, Type, List, Callable, Union, Tuple, Set, Any
 import pandas as pd
 import matplotlib.pyplot as plt
 from numpy import median
+import time
+import os
 
 class Plot:
     def __init__(self, title: str, x_axis: str, y_axis: str, hi: int=-1, lo: int=-1) -> None:
@@ -48,14 +50,20 @@ class Plot:
         ax = plt.gca()
         ax.get_xaxis().set_visible(False)  # don't show x-axis
 
+        working_dir = os.path.join(os.getcwd(), "temp")
+        os.makedirs(working_dir, exist_ok=True)
+
+        current_time = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+        outputfile = os.path.join(working_dir, '{0}.{1}._plot.png'.format(name, current_time))
+
         plt.savefig(
-            f"/.mounts/labs/gsiprojects/gsi/gsiusers/jqian/Analysis_Reports/plots/{name}_plot.png",
+            outputfile,
             bbox_inches="tight"
         )
         
         #close plot to save memory since we don't need it anymore
         plt.close()
-        return f"plots/{name}_plot.png"
+        return outputfile
 
     def load_context(self, process_col) -> Dict[str, str]:
         """
@@ -155,11 +163,16 @@ class SeqPlot(Plot):
         ax = plt.gca()
         ax.get_xaxis().set_visible(False)  # don't show x-axis
 
+        working_dir = os.path.join(os.getcwd(), "temp")
+        os.makedirs(working_dir, exist_ok=True)
+        current_time = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+        outputfile = os.path.join(working_dir, '{0}.{1}._plot.png'.format(name, current_time))
+
         plt.savefig(
-            f"/.mounts/labs/gsiprojects/gsi/gsiusers/jqian/Analysis_Reports/plots/{name}_plot.png",
+            outputfile,
             bbox_inches="tight"
         )
         
         #close plot to save memory since we don't need it anymore
         plt.close()
-        return f"plots/{name}_plot.png"
+        return outputfile
