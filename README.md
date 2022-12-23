@@ -21,7 +21,7 @@ The file `requirements.txt` has the dependenices required for the script to work
 
 After installing Anaconda and setting up a new virtual environment, run the following command in the root directory of this repo
 ```
-conda install --file requirements.txt
+conda create -c conda-forge --prefix /path/to/conda/env --file requirements.txt
 ```
 
 If you opt to use a different package manager like `Pyenv`, you will most likely run 
