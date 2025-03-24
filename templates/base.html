@@ -4,6 +4,30 @@
     <meta charset="UTF-8">
     <link rel="stylesheet" href="./static/css/style.css">
     <title>analysis_report</title>
+    <style>
+        /* Dark grey header for tables */
+        .case_table th {
+            background-color: #BDB9B8;  
+            color: black;            
+            padding: 8px;
+            text-align: left;
+        }
+
+        /* Alternate row colors */
+        .case_table tr:nth-child(odd) {
+            background-color: #e0e0e0 ;  
+        }
+
+        .case_table tr:nth-child(even) {
+            background-color: #FFFDFC;  
+        }
+
+        .case_table th, .case_table td {
+            padding: 8px;
+            border: 1px solid #ddd;
+        }
+
+    </style>
 </head>
 <body style="margin-left:5mm">
     <table style="width:100%; font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
@@ -13,36 +37,34 @@
                 <p style="text-align: center; color: black; font-size:30px; font-family: Arial, Verdana, sans-serif; font-weight:600">{{ header.title }} Data Release Report</p>
             </td>
         </tr>
-   </table>
+    </table>
    
-   <p style="font-size: 12px;">{{ header.blurb }}</p>
+    <p style="font-size: 12px;">{{ header.blurb }}</p>
 
-   <table id="project_table">
+    <table id="project_table">
         <tr>
             <th>Project Code</th>
             <th>Release</th>
             <th>Date of Report Generation</th>     
         </tr>    
-            <tr>       
+        <tr>       
             <td> {{ header.project }} </td>
             <td> {{ header.release }}</td>      
             <td> {{ header.date }} </td>
-            </tr> 
-   </table>
-   <br>
-   <br>
-   <br>
+        </tr> 
+    </table>
+    <br><br><br>
 
-   <h2 style="margin-left: 20px" id="toc"><b>Contents</b></h2>
+    <h2 style="margin-left: 20px" id="toc"><b>Contents</b></h2>
     {% for section in sections %}
-        <div class="toc-row"><a href="#{{ section }}"> {{ loop.index}}. {{ sections[section].title }}</a></div>
+        <div class="toc-row"><a href="#{{ section }}" style="margin-left: 5px;">{{ loop.index }}. {{ sections[section].title }}</a></div>
         {% if sections[section].tables|length > 1 %}
             {% for table in sections[section].tables %}     
-                <div class="toc-row" style="margin-left:100px"><a href="#{{ section }}_{{ table }}"> {{ sections[section].tables[table].title }}</a></div>
+                <div class="toc-row" style="margin-left:100px"><a href="#{{ section }}_{{ table }}" style="margin-left: 5px;"> {{ sections[section].tables[table].title }}</a></div>
             {% endfor %}
         {% endif %}
     {% endfor %}
-   <div style="page-break-after: always;"></div>
+    <div style="page-break-after: always;"></div>
 
     {% for section in sections %}
         <div class="landscape">
@@ -67,23 +89,15 @@
                         {% endfor %}
                     </tr>  
                     {% for entry in sections[section].tables[table]["data"] %}
-                        {% set outer_loop = loop %}              
+                        <tr style="page-break-inside: avoid;">
                             {% for id in entry %}
-                                {% for row in entry[id] %}
-                                    <tr style="page-break-inside: avoid;" class="{{ outer_loop.cycle('odd', 'even') }}">       
-                                        {% for heading in sections[section].tables[table]["headings"] %}
-                                            {% if row[heading] is number %}
-                                                <td>{{ "{:,}".format(row[heading]) }}</td>
-                                            {% elif heading == "case" %}     
-                                                <td style="word-break: keep-all;">{{ row[heading] }}</td>
-                                            {% else %}     
-                                                <td style="word-break:break-all;"> {{ row[heading] }}</td>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </tr>
-                                {% endfor %}
+                                {% if id == "donor" %}
+                                    <td>{{ entry[id] | replace(" ", "") }}</td>
+                                {% else %}
+                                    <td>{{ entry[id] }}</td>
+                                {% endif %}
                             {% endfor %}
-                        </tbody>
+                        </tr>
                     {% endfor %}
                 </table>
                 
@@ -102,7 +116,6 @@
                             <br>
                             <img src="{{ sections[section].tables[table].plots[plot].fig_path }}"></img>
                         </div>
-        
                     {% endfor %}
                     <div style="page-break-after: always;"></div>
             {% endif %}                
@@ -110,4 +123,4 @@
 
     {% endfor %}
 </body>
-</html
+</html>

@@ -1,50 +1,70 @@
 import os
+import sys
+import json
 import argparse
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 from weasyprint import CSS
-from section import (
+from section import ( 
+    HeaderSection, 
+    DellySection, 
+    Mutect2Section, 
     RSEMSection,
-    SequenzaSection,
-    DellySection,
     StarFusionSection,
-    Mutect2Section,
-    RawSeqDataSection,
-    CasesSection,
-    CallReadyAlignmentsSection,
-    HeaderSection,
 )
-
-from tables import Table
 
 # Report class outlines the structure and order or a report
 class Report:
-    def __init__(self, project, release):
-        self.context = {"sections":{}, "header": {}} #context to be passed to jinja2 templating
-        self.header = HeaderSection(project, release) 
-        self.sections = [ #sections will appear in the following order in the report
-            CasesSection(),
-            RawSeqDataSection(),
-            CallReadyAlignmentsSection(),
-            Mutect2Section(),
-            SequenzaSection(),
+    def __init__(self, workflow_ids, base_db_path):
+        self.workflow_ids = workflow_ids
+        self.base_db_path = base_db_path
+        self.header = HeaderSection()  
+        self.sections = [
             DellySection(),
+            Mutect2Section(),
             RSEMSection(),
             StarFusionSection(),
         ]
 
     def load_context(self):
-        """
-        None -> None
-    
-        Get the data and load it into a context dict for jinja2 to generate html
-        """
-        self.context["header"] = self.header.load_context()
+        report_context = {
+            "header": self.header.load_context(),  
+            "sections": {}
+        }
         for section in self.sections:
-            self.context["sections"][section.name] = section.load_context()
+            section_context = section.load_context(self.workflow_ids, self.base_db_path)
+            report_context["sections"][section.name] = section_context
+
+        return report_context
+
+def extract_workflow_ids(data):
+    '''
+    Extracts workflow ids from a JSON file and returns it as a list. 
+    Note: The function first check to see if the data is in the form of a
+          dictionary or a list. 
+
+    Parameters
+    ----------
+    - The dataset in the form of a dictionary or a list. 
+    '''
+    workflow_ids = []
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == 'workflow_id':
+                workflow_ids.append(value)
+            elif value is not None:
+                workflow_ids.extend(extract_workflow_ids(value))
+    elif isinstance(data, list):
+        for item in data:
+            if item is not None:
+                workflow_ids.extend(extract_workflow_ids(item))
+
+    return workflow_ids
+
 
 def makepdf(html, outputfile):
-    """
+    '''
     (str) -> None
     
     Generates a PDF file from a string of HTML
@@ -53,16 +73,15 @@ def makepdf(html, outputfile):
     ----------
     - html (str) String of formated HTML
     - outputfile (str): Name of the output PDF file
-    """
-
+    '''
     css_file = os.path.join(os.path.dirname(__file__), './static/css/style.css')
-    
+
     htmldoc = HTML(string=html, base_url=__file__)
     htmldoc.write_pdf(outputfile, stylesheets=[CSS(css_file)], presentational_hints=True)
 
 
 def generate_report(input, output, use_stage):
-    """
+    '''
     (str, str, bool) -> None
     
     Generates a report using data from input file to output file. use_stage indicates if
@@ -73,32 +92,36 @@ def generate_report(input, output, use_stage):
     - input (str): name of input file
     - output (str): name of the output PDF file
     - use_stage: set to True if using data from staging
-    """
+    '''
     infile = input if input else "ar_input.json"
     outfile = output if output else "Analysis_Report.pdf"
-    table = Table(infile, use_stage) #initializing table data
-    report = Report(table.project, table.release) #initialize report structure
 
-    report.load_context()
+    # Read the input JSON file
+    with open(infile, 'r') as file:
+        data = json.load(file)
 
-    # used to debug issues with context
-    # with open('ar_context.json', 'w', encoding='utf-8') as file:
-    #     json.dump(report.context, file, ensure_ascii=False, indent=4)
+    workflow_ids = extract_workflow_ids(data)
+    base_db_path = "/scratch2/groups/gsi/staging/qcetl_v1/" if use_stage else "/scratch2/groups/gsi/production/qcetl_v1/"
 
+
+    report = Report(workflow_ids, base_db_path)
+    report_context = report.load_context()
+
+    # Generate HTML content using Jinja2 templates
     template_dir = os.path.join(os.path.dirname(__file__), './templates')
     environment = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
     results_template = environment.get_template("base.html")
 
-    contents = results_template.render(report.context)
-    
+    contents = results_template.render(report_context)
+
     makepdf(contents, outfile)
     print(f"Created report {outfile}")
 
 
 if __name__ == "__main__":
-    #create parser for command line args
+    # Create parser for command line args
     parser = argparse.ArgumentParser(
-        description="Generates a Analysis Data Release Report"
+        description="Generates an Analysis Data Release Report"
     )
 
     parser.add_argument(
@@ -125,5 +148,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(f"Reading input from {args.infile}")
-
+    
     generate_report(input=args.infile, output=args.outfile, use_stage=args.stage)
