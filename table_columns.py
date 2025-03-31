@@ -10,6 +10,16 @@ for json keys if possible.
 class CommonColumns:
     Case = "Donor"
 
+class CasesTableColumns:
+    Case = CommonColumns.Case
+    GroupID = "Group ID"
+    LibraryType = "Library Type"
+    TissueType = "Tissue Type"
+    TissueOrigin = "Tissue Origin"
+    TissuePreparation = "Tissue Preparation"
+    ExternalID = "External ID"
+    SampleID = "Sample ID"
+
 class DellyTableColumns:
     Case = CommonColumns.Case
     NumCalls = "num_calls"

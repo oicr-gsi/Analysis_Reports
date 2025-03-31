@@ -1,10 +1,13 @@
 import json
 import sys
 import os
+import gzip
+import re
 import pandas as pd
 import sqlite3
 from table_columns import (
     CommonColumns,
+    CasesTableColumns,
     DellyTableColumns,
     Mutect2TableColumns,
     RSEMTableColumns,
@@ -42,12 +45,127 @@ class Table:
 
         return context
 
+# CasesTable class defines the Cases table
+class CasesTable(Table):
+    def __init__(self):
+        self.title = "Donors"
+        self.headings = {
+            CasesTableColumns.Case: "Donor",
+            CasesTableColumns.GroupID: "Group ID",
+            CasesTableColumns.LibraryType: "Library Type",
+            CasesTableColumns.TissueType: "Tissue Type",
+            CasesTableColumns.TissueOrigin: "Tissue Origin",
+            CasesTableColumns.TissuePreparation: "Tissue Preparation",
+            CasesTableColumns.ExternalID: "External ID",
+            CasesTableColumns.SampleID: "Sample ID",
+        }
+        self.columns = {
+            CasesTableColumns.Case: "\"Donor\"",
+            CasesTableColumns.GroupID: "\"Group ID\"",
+            CasesTableColumns.LibraryType: "\"Library Type\"",
+            CasesTableColumns.TissueType: "\"Tissue Type\"",
+            CasesTableColumns.TissueOrigin: "\"Tissue Origin\"",
+            CasesTableColumns.TissuePreparation: "\"Tissue Preparation\"",
+            CasesTableColumns.ExternalID: "\"External ID\"",
+            CasesTableColumns.SampleID: "\"Sample ID\"",
+        }
+        self.source_file = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz" 
+        self.glossary = {}
+        # Glossary templates
+        self.tissue_types = {
+            'X': 'Xenograft derived from some tumour.',
+            'U': 'Unspecified', 
+            'T': 'Unclassified tumour', 
+            'S': 'Serum from blood where clotting proteins have been removed',
+            'R': 'Reference or non-tumour, non-diseased tissue sample.',
+            'P': 'Primary tumour', 
+            'O': 'Organoid', 
+            'n': 'Unknown', 
+            'M': 'Metastatic tumour',
+            'F': 'Fibroblast cells', 
+            'E': 'Endothelial cells', 
+            'C': 'Cell line derived from a tumour',
+            'B': 'Benign tumour', 
+            'A': 'Cells taken from Ascites fluid'
+        }
+        self.tissue_origin = {
+            'Ab': 'Abdomen', 'Ad': 'Adipose', 'Ae': 'Adnexa', 'Ag': 'Adrenal', 'An': 'Anus',
+            'Ao': 'Anorectal', 'Ap': 'Appendix', 'As': 'Ascites', 'At': 'Astrocytoma', 'Av': 'Ampulla',
+            'Ax': 'Axillary', 'Ba': 'Back', 'Bd': 'Bile', 'Bi': 'Biliary', 'Bl': 'Bladder',
+            'Bm': 'Bone', 'Bn': 'Brain', 'Bo': 'Bone', 'Br': 'Breast', 'Bu': 'Buccal',
+            'Bw': 'Bowel', 'Cb': 'Cord', 'Cc': 'Cecum', 'Ce': 'Cervix', 'Cf': 'Cell-Free', 'Ch': 'Chest',
+            'Cj': 'Conjunctiva', 'Ck': 'Cheek', 'Cn': 'Central', 'Co': 'Colon', 'Cr': 'Colorectal',
+            'Cs': 'Cul-de-sac', 'Ct': 'Circulating', 'Di': 'Diaphragm', 'Du': 'Duodenum',
+            'En': 'Endometrial', 'Ep': 'Epidural', 'Es': 'Esophagus', 'Ey': 'Eye', 'Fa': 'Fallopian',
+            'Fb': 'Fibroid', 'Fs': 'Foreskin', 'Ft': 'Foot', 'Ga': 'Gastric', 'Gb': 'Gallbladder',
+            'Ge': 'Gastroesophageal', 'Gi': 'Gastrointestinal', 'Gj': 'Gastrojejunal', 'Gn': 'Gingiva',
+            'Gt': 'Genital', 'Hp': 'Hypopharynx', 'Hr': 'Heart', 'Ic': 'Ileocecum', 'Il': 'Ileum',
+            'Ki': 'Kidney', 'La': 'Lacrimal', 'Lb': 'Limb', 'Le': 'Leukocyte', 'Lg': 'Leg',
+            'Li': 'Large', 'Ln': 'Lymph', 'Lp': 'Lymphoblast', 'Lu': 'Lung', 'Lv': 'Liver', 
+            'Lx': 'Larynx', 'Ly': 'Lymphocyte', 'Md': 'Mediastinum', 'Me': 'Mesenchyme', 'Mn': 'Mandible',
+            'Mo': 'Mouth', 'Ms': 'Mesentary', 'Mu': 'Muscle', 'Mx': 'Maxilla', 'Nk': 'Neck',
+            'nn': 'Unknown', 'No': 'Nose', 'Np': 'Nasopharynx', 'Oc': 'Oral', 'Om': 'Omentum',
+            'Or': 'Orbit', 'Ov': 'Ovary', 'Pa': 'Pancreas', 'Pb': 'Peripheral', 'Pc': 'Pancreatobiliary',
+            'Pd': 'Parathyroid', 'Pe': 'Pelvic', 'Pg': 'Parotid', 'Ph': 'Paratracheal', 'Pi': 'Penis',
+            'Pl': 'Plasma', 'Pm': 'Peritoneum', 'Pn': 'Peripheral', 'Po': 'Peri-aorta', 'Pr': 'Prostate',
+            'Pt': 'Palate', 'Pu': 'Pleura', 'Py': 'Periampullary', 'Ra': 'Right', 'Rc': 'Rectosigmoid',
+            'Re': 'Rectum', 'Ri': 'Rib', 'Rp': 'Retroperitoneum', 'Sa': 'Saliva', 'Sb': 'Small',
+            'Sc': 'Scalp', 'Se': 'Serum', 'Sg': 'Salivary', 'Si': 'Small', 'Sk': 'Skin', 'Sm': 'Skeletal',
+            'Sn': 'Spine', 'So': 'Soft', 'Sp': 'Spleen', 'Sr': 'Serosa', 'Ss': 'Sinus', 'St': 'Stomach',
+            'Su': 'Sternum', 'Ta': 'Tail', 'Te': 'Testes', 'Tg': 'Thymic', 'Th': 'Thymus',
+            'Tn': 'Tonsil', 'To': 'Throat', 'Tr': 'Trachea', 'Tu': 'Tongue', 'Ty': 'Thyroid',
+            'Uc': 'Urachus', 'Ue': 'Ureter', 'Um': 'Umbilical', 'Up': 'Urine', 'Ur': 'Urethra',
+            'Us': 'Urine', 'Ut': 'Uterus', 'Uw': 'Urine', 'Vg': 'Vagina', 'Vu': 'Vulva', 'Wm': 'Worm'
+        }
+        self.library_design = {
+            'WT': 'Whole Transcriptome', 'WG': 'Whole Genome', 'TS': 'Targeted Sequencing',
+            'TR': 'Total RNA', 'SW': 'Shallow Whole Genome', 'SM': 'smRNA', 'SC': 'Single Cell',
+            'NN': 'Unknown', 'MR': 'mRNA', 'EX': 'Exome', 'CT': 'ctDNA', 'CM': 'cfMEDIP',
+            'CH': 'ChIP-Seq', 'BS': 'Bisulphite Sequencing', 'AS': 'ATAC-Seq'
+        }
+
+    def load_context(self, workflow_ids, base_db_path):
+        '''
+        Load the context for the Cases Table by querying the TSV file.
+        '''
+        context = {
+            "title": self.title,
+            "headings": self.headings,
+            "columns": self.columns,
+            "glossary": self.glossary,
+        }
+
+        # Query the TSV file and get the cases data
+        cases_data = query_provenance_file(self.source_file, workflow_ids)
+        cases_data['Sample ID'] = cases_data.apply(
+            lambda row: f"{row['Donor']}_{row['Tissue Origin']}_{row['Tissue Type']}_{row['Library Type']}_{row['Group ID']}",
+            axis=1
+        )
+
+        # Get the unique values present in the dataset for each category
+        ttypes = cases_data['Tissue Type'].unique()
+        torigins = cases_data['Tissue Origin'].unique()
+        ltypes = cases_data['Library Type'].unique()
+
+        # For each type, get the full form description
+        ttype = {key: self.tissue_types.get(key, 'Unknown') for key in ttypes}
+        torigin = {key: self.tissue_origin.get(key, 'Unknown') for key in torigins}
+        ltype = {key: self.library_design.get(key, 'Unknown') for key in ltypes}
+
+        # Update glossary with full descriptions based on the data in the table
+        self.glossary[CasesTableColumns.TissueType] = "\n".join([f"{k}: {v}" for k, v in ttype.items()])
+        self.glossary[CasesTableColumns.TissueOrigin] = "\n".join([f"{k}: {v}" for k, v in torigin.items()])
+        self.glossary[CasesTableColumns.LibraryType] = "\n".join([f"{k}: {v}" for k, v in ltype.items()])
+        
+        context["data"] = cases_data.to_dict(orient='records')
+        return context
+
 # DellyTable class defines a table for the delly workflow
 class DellyTable(Table):
     def __init__(self):
         self.title = "Genomic Structural Variants"
         self.headings = {
-            DellyTableColumns.Case: "Case",
+            DellyTableColumns.Case: "Donor",
             DellyTableColumns.NumCalls: "SV Calls",
             DellyTableColumns.NumPASS: "SV PASS Calls",
             DellyTableColumns.NumBND: "Translocations",
@@ -83,7 +201,7 @@ class Mutect2Table(Table):
     def __init__(self):
         self.title = "Somatic Mutations"
         self.headings = {
-            Mutect2TableColumns.Case: "Case",
+            Mutect2TableColumns.Case: "Donor",
             Mutect2TableColumns.NumCalls: "Calls",
             Mutect2TableColumns.NumPASS: "PASS Calls",
             Mutect2TableColumns.NumSNPs: "SNPs",
@@ -113,7 +231,7 @@ class RSEMTable(Table):
     def __init__(self):
         self.title = "Gene Expression"
         self.headings = {
-            RSEMTableColumns.Case: "Case",
+            RSEMTableColumns.Case: "Donor",
             RSEMTableColumns.Total: "Total Reads",
             RSEMTableColumns.PctNonZero: "Percent Non-zero",
             RSEMTableColumns.Q0_05: "0.05 Quantile",
@@ -143,7 +261,7 @@ class StarFusionTable(Table):
     def __init__(self):
         self.title = "Gene Fusions"
         self.headings = {
-            StarFusionTableColumns.Case: "Case",
+            StarFusionTableColumns.Case: "Donor",
             StarFusionTableColumns.NumRecords: "Fusion Calls",
         }
         self.columns = {
@@ -187,3 +305,41 @@ def extract_metrics(table_class, workflow_ids, base_db_path):
     con.close()
 
     return res
+
+def query_provenance_file(file_provenance_path, workflow_ids):
+    workflow = re.compile('|'.join(workflow_ids))
+    case = []
+    with gzip.open(file_provenance_path, 'rt') as f:
+        header = f.readline().strip().split('\t')
+        col_indices = {
+            'Workflow Run SWID': header.index('Workflow Run SWID'),
+            'Root Sample Name': header.index('Root Sample Name'),
+            'Sample Attributes': header.index('Sample Attributes')
+        }
+
+        for line in f:
+            row = line.strip().split('\t')
+            if any(workflow_id in row[col_indices['Workflow Run SWID']] for workflow_id in workflow_ids):
+                workflow_swid = row[col_indices['Workflow Run SWID']]
+                donor = row[col_indices['Root Sample Name']]
+                sample_attributes = row[col_indices['Sample Attributes']]
+
+                metadata_dict = {}
+                for item in sample_attributes.split(';'):
+                    if '=' in item:
+                        key, value = item.split('=', 1)
+                        metadata_dict[key] = value
+
+                case.append({
+                    'Donor': donor,
+                    'Group ID': metadata_dict.get('geo_group_id'),
+                    'Library Type': metadata_dict.get('geo_library_source_template_type'),
+                    'Tissue Type': metadata_dict.get('geo_tissue_type'),
+                    'Tissue Origin': metadata_dict.get('geo_tissue_origin'),
+                    'Tissue Preparation': metadata_dict.get('geo_tissue_preparation'),
+                    'External ID': metadata_dict.get('geo_external_name'),
+                })
+
+    # Convert the list of cases to a DataFrame
+    cases = pd.DataFrame(case).drop_duplicates()
+    return cases

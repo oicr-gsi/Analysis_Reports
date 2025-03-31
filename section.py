@@ -1,4 +1,5 @@
 from tables import (
+    CasesTable,
     RSEMTable,
     DellyTable,
     Mutect2Table,
@@ -36,6 +37,21 @@ class Section:
             context["tables"][tcount] = table_context  # Store the table context in the section context
         return context
 
+#CasesSection class defines the section for cases
+class CasesSection(Section):
+    def __init__(self):
+        self.title = "Donors"
+        self.blurb = '''
+        The following donors are included in this release.
+        '''
+        self.name = "cases"
+        self.tables = [
+            CasesTable(),
+        ]
+
+    def load_context(self, workflow_ids, base_db_path):
+        context = super().load_context(workflow_ids, base_db_path)
+        return context
 
 # DellySection class defines the section for delly workflow
 class DellySection(Section):

@@ -7,6 +7,7 @@ from weasyprint import HTML
 from weasyprint import CSS
 from section import ( 
     HeaderSection, 
+    CasesSection,
     DellySection, 
     Mutect2Section, 
     RSEMSection,
@@ -20,6 +21,7 @@ class Report:
         self.base_db_path = base_db_path
         self.header = HeaderSection()  
         self.sections = [
+            CasesSection(),
             DellySection(),
             Mutect2Section(),
             RSEMSection(),
