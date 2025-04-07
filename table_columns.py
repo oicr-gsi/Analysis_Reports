@@ -12,16 +12,18 @@ class CommonColumns:
 
 class CasesTableColumns:
     Case = CommonColumns.Case
+    SampleID = "Sample ID"
     GroupID = "Group ID"
     LibraryType = "Library Type"
     TissueType = "Tissue Type"
     TissueOrigin = "Tissue Origin"
     TissuePreparation = "Tissue Preparation"
     ExternalID = "External ID"
-    SampleID = "Sample ID"
+    
 
 class DellyTableColumns:
     Case = CommonColumns.Case
+    SampleID = "Sample ID"
     NumCalls = "num_calls"
     NumPASS = "num_PASS"
     NumBND = "num_BND"
@@ -32,6 +34,7 @@ class DellyTableColumns:
 
 class Mutect2TableColumns:
     Case = CommonColumns.Case
+    SampleID = "Sample ID"
     NumCalls = "num_calls"
     NumPASS = "num_PASS"
     NumSNPs = "num_SNPs"
@@ -40,6 +43,7 @@ class Mutect2TableColumns:
 
 class RSEMTableColumns:
     Case = CommonColumns.Case
+    SampleID = "Sample ID"
     Total = "total"
     PctNonZero = "pct_non_zero"
     Q0 = "Q0"
@@ -54,4 +58,39 @@ class RSEMTableColumns:
 
 class StarFusionTableColumns:
     Case = CommonColumns.Case
+    SampleID = "Sample ID"
     NumRecords = "num_records"
+    
+class WGCallReadyTableColumns:
+    Case = CommonColumns.Case
+    SampleID = "Sample ID"
+    CoverageDedup = "coverage deduplicated"
+    MarkDupPctDup = "mark duplicates_PERCENT_DUPLICATION"
+    TotalClusters = "total clusters"
+    MappedReads = "mapped reads"
+
+class WGLaneLevelTableColumns:
+    Case = WGCallReadyTableColumns.Case
+    SampleID = "Sample ID"
+    CoverageDedup = WGCallReadyTableColumns.CoverageDedup
+    InsertSizeAvg = "insert size average"
+    MarkDupPctDup = WGCallReadyTableColumns.MarkDupPctDup
+    TotalClusters = WGCallReadyTableColumns.TotalClusters
+    MappedReads = WGCallReadyTableColumns.MappedReads
+
+class WTCallReadyTableColumns:
+    Case = CommonColumns.Case
+    SampleID = "Sample ID"
+    PctCodingBases = "PCT_CODING_BASES"
+    TotalClusters = "total clusters"
+    MappedReads = "mapped reads"
+    RRNAContamination = "rrna_contam"
+
+class WTLaneLevelTableColumns:
+    Case = CommonColumns.Case
+    SampleID = "Sample ID"
+    PctCodingBases = WTCallReadyTableColumns.PctCodingBases
+    TotalClusters = WTCallReadyTableColumns.TotalClusters
+    MappedReads = WTCallReadyTableColumns.MappedReads
+    RRNAContamination = WTCallReadyTableColumns.RRNAContamination
+

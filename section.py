@@ -4,6 +4,10 @@ from tables import (
     DellyTable,
     Mutect2Table,
     StarFusionTable,
+    WGCallReadyTable,
+    WGLaneLevelTable,
+    WTCallReadyTable,
+    WTLaneLevelTable,
 )
 from typing import List, Any
 from datetime import date
@@ -15,7 +19,7 @@ class Section:
     tables: List[Any]  # tables of section
     name: str  # name of section, used as key in context for jinja2 templating
 
-    def load_context(self, workflow_ids, base_db_path):
+    def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
         Returns a dict containing the context of the section, including its tables.
 
@@ -33,8 +37,39 @@ class Section:
         }
         # For each table in the section, load its context
         for tcount, table in enumerate(self.tables):
-            table_context = table.load_context(workflow_ids, base_db_path)  # Pass workflow_ids and base_db_path to table
+            table_context = table.load_context(workflow_ids, base_db_path, cases_data)  # Pass workflow_ids, cases_data and base_db_path to table
             context["tables"][tcount] = table_context  # Store the table context in the section context
+        return context
+
+class RawSeqDataSection(Section):
+    def __init__(self):
+        self.title = "Raw Sequence Data"
+        self.blurb = """
+        Samples were sequenced on one or more sequencing runs.
+        """
+        self.name = "raw_seq_data"
+        self.tables = [
+            WGLaneLevelTable(),
+            WTLaneLevelTable(),
+        ]
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
+        return context
+
+#CallReadyAlignmentsSection class defines the section for call ready alignments
+class CallReadyAlignmentsSection(Section):
+    def __init__(self):
+        self.title = "Call Ready Alignments"
+        self.blurb = """
+        All data from each sample is merged and processed to a call ready state.
+        """
+        self.name = "call_ready"
+        self.tables = [
+            WGCallReadyTable(),
+            WTCallReadyTable(),
+        ]
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
         return context
 
 #CasesSection class defines the section for cases
@@ -49,8 +84,8 @@ class CasesSection(Section):
             CasesTable(),
         ]
 
-    def load_context(self, workflow_ids, base_db_path):
-        context = super().load_context(workflow_ids, base_db_path)
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
         return context
 
 # DellySection class defines the section for delly workflow
@@ -66,8 +101,8 @@ class DellySection(Section):
             DellyTable(),
         ]
     
-    def load_context(self, workflow_ids, base_db_path):
-        context = super().load_context(workflow_ids, base_db_path)
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
         return context
 
 # HeaderSection class defines the header of the report
@@ -110,8 +145,8 @@ class Mutect2Section(Section):
             Mutect2Table(),
         ]
     
-    def load_context(self, workflow_ids, base_db_path):
-        context = super().load_context(workflow_ids, base_db_path)
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
         return context
 
 # RSEMSection class defines the section for RSEM workflow
@@ -128,8 +163,8 @@ class RSEMSection(Section):
             RSEMTable(),
         ]
     
-    def load_context(self, workflow_ids, base_db_path):
-        context = super().load_context(workflow_ids, base_db_path)
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
         return context
 
 #StarFusionSection class defines the section for StarFusion
@@ -145,6 +180,6 @@ class StarFusionSection(Section):
             StarFusionTable(),
         ]
 
-    def load_context(self, workflow_ids, base_db_path):
-        context = super().load_context(workflow_ids, base_db_path)
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        context = super().load_context(workflow_ids, base_db_path, cases_data)
         return context

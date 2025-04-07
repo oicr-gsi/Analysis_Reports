@@ -2,6 +2,9 @@ import os
 import sys
 import json
 import argparse
+import re
+import gzip
+import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 from weasyprint import CSS
@@ -12,13 +15,16 @@ from section import (
     Mutect2Section, 
     RSEMSection,
     StarFusionSection,
+    CallReadyAlignmentsSection,
+    RawSeqDataSection
 )
 
 # Report class outlines the structure and order or a report
 class Report:
-    def __init__(self, workflow_ids, base_db_path):
+    def __init__(self, workflow_ids, base_db_path, cases_data):
         self.workflow_ids = workflow_ids
         self.base_db_path = base_db_path
+        self.cases_data = cases_data
         self.header = HeaderSection()  
         self.sections = [
             CasesSection(),
@@ -26,6 +32,8 @@ class Report:
             Mutect2Section(),
             RSEMSection(),
             StarFusionSection(),
+            CallReadyAlignmentsSection(),
+            RawSeqDataSection(),
         ]
 
     def load_context(self):
@@ -34,7 +42,7 @@ class Report:
             "sections": {}
         }
         for section in self.sections:
-            section_context = section.load_context(self.workflow_ids, self.base_db_path)
+            section_context = section.load_context(self.workflow_ids, self.base_db_path, self.cases_data)
             report_context["sections"][section.name] = section_context
 
         return report_context
@@ -63,6 +71,49 @@ def extract_workflow_ids(data):
                 workflow_ids.extend(extract_workflow_ids(item))
 
     return workflow_ids
+
+
+def query_provenance_file(file_provenance_path, workflow_ids):
+    workflow = re.compile('|'.join(workflow_ids))
+    case = []
+    with gzip.open(file_provenance_path, 'rt') as f:
+        header = f.readline().strip().split('\t')
+        col_indices = {
+            'Workflow Run SWID': header.index('Workflow Run SWID'),
+            'Root Sample Name': header.index('Root Sample Name'),
+            'Sample Attributes': header.index('Sample Attributes')
+        }
+
+        for line in f:
+            row = line.strip().split('\t')
+            if any(workflow_id in row[col_indices['Workflow Run SWID']] for workflow_id in workflow_ids):
+                workflow_swid = row[col_indices['Workflow Run SWID']]
+                donor = row[col_indices['Root Sample Name']]
+                sample_attributes = row[col_indices['Sample Attributes']]
+
+                metadata_dict = {}
+                for item in sample_attributes.split(';'):
+                    if '=' in item:
+                        key, value = item.split('=', 1)
+                        metadata_dict[key] = value
+
+                case.append({
+                    'Donor': donor,
+                    'Group ID': metadata_dict.get('geo_group_id'),
+                    'Library Type': metadata_dict.get('geo_library_source_template_type'),
+                    'Tissue Type': metadata_dict.get('geo_tissue_type'),
+                    'Tissue Origin': metadata_dict.get('geo_tissue_origin'),
+                    'Tissue Preparation': metadata_dict.get('geo_tissue_preparation'),
+                    'External ID': metadata_dict.get('geo_external_name'),
+                })
+
+    # Convert the list of cases to a DataFrame
+    cases = pd.DataFrame(case).drop_duplicates()
+    cases['Sample ID'] = cases.apply(
+            lambda row: f"{row['Donor']}_{row['Tissue Origin']}_{row['Tissue Type']}_{row['Library Type']}_{row['Group ID']}",
+            axis=1
+        )
+    return cases
 
 
 def makepdf(html, outputfile):
@@ -102,11 +153,12 @@ def generate_report(input, output, use_stage):
     with open(infile, 'r') as file:
         data = json.load(file)
 
+    fp_file = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz"
     workflow_ids = extract_workflow_ids(data)
     base_db_path = "/scratch2/groups/gsi/staging/qcetl_v1/" if use_stage else "/scratch2/groups/gsi/production/qcetl_v1/"
+    cases_data = query_provenance_file(fp_file, workflow_ids)
 
-
-    report = Report(workflow_ids, base_db_path)
+    report = Report(workflow_ids, base_db_path, cases_data)
     report_context = report.load_context()
 
     # Generate HTML content using Jinja2 templates

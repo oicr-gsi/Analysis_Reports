@@ -1,8 +1,3 @@
-import json
-import sys
-import os
-import gzip
-import re
 import pandas as pd
 import sqlite3
 from table_columns import (
@@ -12,6 +7,10 @@ from table_columns import (
     Mutect2TableColumns,
     RSEMTableColumns,
     StarFusionTableColumns,
+    WGCallReadyTableColumns,
+    WGLaneLevelTableColumns,
+    WTCallReadyTableColumns,
+    WTLaneLevelTableColumns,
 )
 
 # The Table class defines each table that is generated
@@ -25,7 +24,7 @@ class Table:
     source_db: str          # database we query from
     glossary: dict          # Dict[name of column, definition]
 
-    def load_context(self, workflow_ids, base_db_path):
+    def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
         None -> dict[str, Any]
         
@@ -41,6 +40,14 @@ class Table:
 
         # Call to extract metrics and get data
         table_data = extract_metrics(self.__class__, workflow_ids, base_db_path) 
+        table_data.columns = table_data.columns.str.strip('"')
+        table_data = table_data.drop(columns=['Sample ID'])
+
+        # Get sample IDs from FPR
+        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left')
+        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
+        table_data = table_data[column_order]
+        
         context["data"] = table_data.to_dict(orient='records')
 
         return context
@@ -51,23 +58,23 @@ class CasesTable(Table):
         self.title = "Donors"
         self.headings = {
             CasesTableColumns.Case: "Donor",
+            CasesTableColumns.SampleID: "Sample ID",
             CasesTableColumns.GroupID: "Group ID",
             CasesTableColumns.LibraryType: "Library Type",
             CasesTableColumns.TissueType: "Tissue Type",
             CasesTableColumns.TissueOrigin: "Tissue Origin",
             CasesTableColumns.TissuePreparation: "Tissue Preparation",
             CasesTableColumns.ExternalID: "External ID",
-            CasesTableColumns.SampleID: "Sample ID",
         }
         self.columns = {
             CasesTableColumns.Case: "\"Donor\"",
+            CasesTableColumns.SampleID: "\"Sample ID\"",
             CasesTableColumns.GroupID: "\"Group ID\"",
             CasesTableColumns.LibraryType: "\"Library Type\"",
             CasesTableColumns.TissueType: "\"Tissue Type\"",
             CasesTableColumns.TissueOrigin: "\"Tissue Origin\"",
             CasesTableColumns.TissuePreparation: "\"Tissue Preparation\"",
             CasesTableColumns.ExternalID: "\"External ID\"",
-            CasesTableColumns.SampleID: "\"Sample ID\"",
         }
         self.source_file = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz" 
         self.glossary = {}
@@ -124,9 +131,9 @@ class CasesTable(Table):
             'CH': 'ChIP-Seq', 'BS': 'Bisulphite Sequencing', 'AS': 'ATAC-Seq'
         }
 
-    def load_context(self, workflow_ids, base_db_path):
+    def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
-        Load the context for the Cases Table by querying the TSV file.
+        Load the context for the Cases Table. 
         '''
         context = {
             "title": self.title,
@@ -135,12 +142,8 @@ class CasesTable(Table):
             "glossary": self.glossary,
         }
 
-        # Query the TSV file and get the cases data
-        cases_data = query_provenance_file(self.source_file, workflow_ids)
-        cases_data['Sample ID'] = cases_data.apply(
-            lambda row: f"{row['Donor']}_{row['Tissue Origin']}_{row['Tissue Type']}_{row['Library Type']}_{row['Group ID']}",
-            axis=1
-        )
+        column_order = ['Donor', 'Sample ID'] + [col for col in cases_data.columns if col not in ['Donor', 'Sample ID']]
+        cases_data = cases_data[column_order]
 
         # Get the unique values present in the dataset for each category
         ttypes = cases_data['Tissue Type'].unique()
@@ -166,6 +169,7 @@ class DellyTable(Table):
         self.title = "Genomic Structural Variants"
         self.headings = {
             DellyTableColumns.Case: "Donor",
+            DellyTableColumns.SampleID: "Sample ID",
             DellyTableColumns.NumCalls: "SV Calls",
             DellyTableColumns.NumPASS: "SV PASS Calls",
             DellyTableColumns.NumBND: "Translocations",
@@ -176,6 +180,7 @@ class DellyTable(Table):
         }
         self.columns = {
             DellyTableColumns.Case: "\"Donor\"",
+            DellyTableColumns.SampleID: "\"Sample ID\"",
             DellyTableColumns.NumCalls: "\"num_calls\"",
             DellyTableColumns.NumPASS: "\"num_PASS\"",
             DellyTableColumns.NumBND: "\"num_BND\"",
@@ -202,6 +207,7 @@ class Mutect2Table(Table):
         self.title = "Somatic Mutations"
         self.headings = {
             Mutect2TableColumns.Case: "Donor",
+            Mutect2TableColumns.SampleID: "Sample ID",
             Mutect2TableColumns.NumCalls: "Calls",
             Mutect2TableColumns.NumPASS: "PASS Calls",
             Mutect2TableColumns.NumSNPs: "SNPs",
@@ -210,6 +216,7 @@ class Mutect2Table(Table):
         }
         self.columns = {
             Mutect2TableColumns.Case: "\"Donor\"",
+            Mutect2TableColumns.SampleID: "\"Sample ID\"",
             Mutect2TableColumns.NumCalls: "\"num_calls\"",
             Mutect2TableColumns.NumPASS: "\"num_PASS\"",
             Mutect2TableColumns.NumSNPs: "\"num_SNPs\"",
@@ -232,6 +239,7 @@ class RSEMTable(Table):
         self.title = "Gene Expression"
         self.headings = {
             RSEMTableColumns.Case: "Donor",
+            RSEMTableColumns.SampleID: "Sample ID",
             RSEMTableColumns.Total: "Total Reads",
             RSEMTableColumns.PctNonZero: "Percent Non-zero",
             RSEMTableColumns.Q0_05: "0.05 Quantile",
@@ -240,6 +248,7 @@ class RSEMTable(Table):
         }
         self.columns = {
             RSEMTableColumns.Case: "\"Donor\"",
+            RSEMTableColumns.SampleID: "\"Sample ID\"",
             RSEMTableColumns.Total: "\"total\"",
             RSEMTableColumns.PctNonZero: "\"pct_non_zero\"",
             RSEMTableColumns.Q0_05: "\"Q0.05\"",
@@ -262,10 +271,12 @@ class StarFusionTable(Table):
         self.title = "Gene Fusions"
         self.headings = {
             StarFusionTableColumns.Case: "Donor",
+            StarFusionTableColumns.SampleID: "Sample ID",
             StarFusionTableColumns.NumRecords: "Fusion Calls",
         }
         self.columns = {
             StarFusionTableColumns.Case: "\"Donor\"",
+            StarFusionTableColumns.SampleID: "\"Sample ID\"",
             StarFusionTableColumns.NumRecords: "\"num_records\"",
         }
         self.source_table = ["analysis_starfusion_analysis_starfusion_1"]
@@ -273,6 +284,228 @@ class StarFusionTable(Table):
         self.glossary = {
             StarFusionTableColumns.NumRecords: "Number of gene fusions identified by StarFusion",
         }  
+
+#WGCallReadyTable class defines a table for the bamqc4merged workflow
+class WGCallReadyTable(Table):
+    def __init__(self):
+        self.title = "Whole Genome Libraries, tumour and matched normal"
+        self.headings = {
+            WGCallReadyTableColumns.Case: "Donor",
+            WGCallReadyTableColumns.SampleID: "Sample ID",
+            WGCallReadyTableColumns.CoverageDedup: "Coverage Depth",
+            WGCallReadyTableColumns.MarkDupPctDup: "Duplication (%)",
+            WGCallReadyTableColumns.TotalClusters: "Read Pairs",
+            WGCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
+        }
+        self.columns = {
+            WGCallReadyTableColumns.Case: "\"Donor\"",
+            WGCallReadyTableColumns.SampleID: "\"Sample ID\"",
+            WGCallReadyTableColumns.CoverageDedup: "\"coverage deduplicated\"",
+            WGCallReadyTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
+            WGCallReadyTableColumns.TotalClusters: "\"total clusters\"",
+            WGCallReadyTableColumns.MappedReads: """
+            ROUND((1 - CAST("unmapped reads meta" as FLOAT) / CAST("total input reads meta" as FLOAT)) * 100, 2)
+            """,
+        }
+        self.source_table = ["bamqc4merged_bamqc4merged_5"]
+        self.source_db = "bamqc4merged"
+        self.glossary = {
+            WGCallReadyTableColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
+            WGCallReadyTableColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
+            WGCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
+            WGCallReadyTableColumns.MappedReads: "Percent of reads mapping to the genomic reference",
+        }
+    
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        '''
+        Load the context for the WG Call Ready Table. 
+        '''
+        context = {
+            "title": self.title,
+            "headings": self.headings,
+            "columns": self.columns,
+            "glossary": self.glossary,
+        }
+        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
+        table_data.columns = table_data.columns.str.strip('"')
+        table_data = table_data.drop(columns=['Sample ID'])
+
+        # Get sample IDs from FPR
+        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left').drop_duplicates()
+        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
+        table_data = table_data[column_order]
+        context["data"] = table_data.to_dict(orient='records')
+        return context
+
+#WGLaneLevelTable class defines a table for the bamqc4 workflow
+class WGLaneLevelTable(Table):
+    def __init__(self):
+        self.title = "Whole Genome Libraries, tumour and matched normal"
+        self.headings = {
+            WGLaneLevelTableColumns.Case: "Donor",
+            WGLaneLevelTableColumns.SampleID: "Sample ID",
+            WGLaneLevelTableColumns.CoverageDedup: "Coverage Depth",
+            WGLaneLevelTableColumns.InsertSizeAvg: "Insert Size",
+            WGLaneLevelTableColumns.MarkDupPctDup: "Duplication (%)",
+            WGLaneLevelTableColumns.TotalClusters: "Read Pairs",
+            WGLaneLevelTableColumns.MappedReads: "Mapped Reads (%)",
+        }
+        self.columns = {
+            WGLaneLevelTableColumns.Case: "\"Donor\"",
+            WGLaneLevelTableColumns.SampleID: "\"Sample ID\"",
+            WGLaneLevelTableColumns.CoverageDedup: "\"coverage deduplicated\"",
+            WGLaneLevelTableColumns.InsertSizeAvg: "\"insert size average\"",
+            WGLaneLevelTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
+            WGLaneLevelTableColumns.TotalClusters: "\"total clusters\"",
+            WGLaneLevelTableColumns.MappedReads: """
+            ROUND((1 - CAST("unmapped reads meta" as FLOAT) / CAST("total input reads meta" as FLOAT)) * 100, 2)
+            """,
+        }
+        self.source_table = ["bamqc4_bamqc4_5"]
+        self.source_db = "bamqc4"
+        self.glossary = {
+            WGLaneLevelTableColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
+            WGLaneLevelTableColumns.InsertSizeAvg: "Mean size of the sequenced insert",
+            WGLaneLevelTableColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
+            WGLaneLevelTableColumns.TotalClusters: "Number of read pairs generated",
+            WGLaneLevelTableColumns.MappedReads: "Percent of reads mapping to the genomic reference",
+
+        }
+
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        '''
+        Load the context for the WG Lane Level Table. 
+        '''
+        context = {
+            "title": self.title,
+            "headings": self.headings,
+            "columns": self.columns,
+            "glossary": self.glossary,
+        }
+        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
+        table_data.columns = table_data.columns.str.strip('"')
+        table_data = table_data.drop(columns=['Sample ID'])
+
+        # Get sample IDs from FPR
+        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left')
+        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
+        table_data = table_data[column_order]
+        context["data"] = table_data.to_dict(orient='records')
+        return context
+
+
+#WTCallReadyTable class defines a table for the rnaseqqc2merged workflow
+class WTCallReadyTable(Table):
+    def __init__(self):
+        self.title = "Whole Transcriptome Libraries, tumour only"
+        self.headings = {
+            WTCallReadyTableColumns.Case: "Donor",
+            WTCallReadyTableColumns.SampleID: "Sample ID",
+            WTCallReadyTableColumns.PctCodingBases: "Percent Coding (%)",
+            WTCallReadyTableColumns.TotalClusters: "Read Pairs",
+            WTCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
+            WTCallReadyTableColumns.RRNAContamination: "rRNA Contamination (%)",
+        }
+        self.columns = {
+            WTCallReadyTableColumns.Case: "\"Donor\"",
+            WTCallReadyTableColumns.SampleID: "\"Sample ID\"",
+            WTCallReadyTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
+            WTCallReadyTableColumns.TotalClusters: "\"total clusters\"",
+            WTCallReadyTableColumns.MappedReads: """
+            ROUND((1 - CAST("unmapped reads" as FLOAT)/CAST("total reads" as FLOAT)) * 100,2)
+            """,
+            WTCallReadyTableColumns.RRNAContamination: """
+                ROUND((CAST("rrna contamination properly paired" as FLOAT)
+                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT)), 2)
+            """,
+        }
+        self.source_table = ["rnaseqqc2merged_rnaseqqc2merged_3"]
+        self.source_db = "rnaseqqc2merged"
+        self.glossary = {
+            WTCallReadyTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
+            WTCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
+            WTCallReadyTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
+            WTCallReadyTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
+        }
+
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        '''
+        Load the context for the WT Call Ready Table. 
+        '''
+        context = {
+            "title": self.title,
+            "headings": self.headings,
+            "columns": self.columns,
+            "glossary": self.glossary,
+        }
+        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
+        table_data.columns = table_data.columns.str.strip('"')
+        table_data = table_data.drop(columns=['Sample ID'])
+
+        # Get sample IDs from FPR
+        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left').drop_duplicates()
+        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
+        table_data = table_data[column_order]
+        context["data"] = table_data.to_dict(orient='records')
+        return context
+
+#WTLaneLevelTable class defines a table for the rnaseqqc2 workflow
+class WTLaneLevelTable(Table):
+    def __init__(self):
+        self.title = "Whole Transcriptome Libraries, tumour only"
+        self.blurb = ""
+        self.headings = {
+            WTLaneLevelTableColumns.Case: "Donor",
+            WTLaneLevelTableColumns.SampleID: "Sample ID",
+            WTLaneLevelTableColumns.PctCodingBases: "Percent Coding (%)",
+            WTLaneLevelTableColumns.TotalClusters: "Read Pairs",
+            WTLaneLevelTableColumns.MappedReads: "Mapped Reads (%)",
+            WTLaneLevelTableColumns.RRNAContamination: "rRNA Contamination (%)",
+
+        }
+        self.columns = {
+            WTLaneLevelTableColumns.Case: "\"Donor\"",
+            WTLaneLevelTableColumns.SampleID: "\"Sample ID\"",
+            WTLaneLevelTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
+            WTLaneLevelTableColumns.TotalClusters: "\"total clusters\"",
+            WTLaneLevelTableColumns.MappedReads: """
+            ROUND((1 - CAST("unmapped reads" as FLOAT)/CAST("total reads" as FLOAT)) * 100,2)
+            """,
+            WTLaneLevelTableColumns.RRNAContamination: """
+                ROUND((CAST("rrna contamination properly paired" as FLOAT)
+                /CAST("rrna contamination in total (QC-passed reads + QC-failed reads)" as FLOAT)), 2)
+            """,
+        }
+        self.source_table = ["rnaseqqc2_rnaseqqc2_3"]
+        self.source_db = "rnaseqqc2"
+        self.glossary = {
+            WTLaneLevelTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
+            WTLaneLevelTableColumns.TotalClusters: "Number of read pairs generated",
+            WTLaneLevelTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
+            WTLaneLevelTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
+
+        }
+
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        '''
+        Load the context for the WT Call Ready Table. 
+        '''
+        context = {
+            "title": self.title,
+            "headings": self.headings,
+            "columns": self.columns,
+            "glossary": self.glossary,
+        }
+        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
+        table_data.columns = table_data.columns.str.strip('"')
+        table_data = table_data.drop(columns=['Sample ID'])
+
+        # Get sample IDs from FPR
+        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left')
+        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
+        table_data = table_data[column_order]
+        context["data"] = table_data.to_dict(orient='records')
+        return context
 
 
 def extract_metrics(table_class, workflow_ids, base_db_path):
@@ -306,40 +539,36 @@ def extract_metrics(table_class, workflow_ids, base_db_path):
 
     return res
 
-def query_provenance_file(file_provenance_path, workflow_ids):
-    workflow = re.compile('|'.join(workflow_ids))
-    case = []
-    with gzip.open(file_provenance_path, 'rt') as f:
-        header = f.readline().strip().split('\t')
-        col_indices = {
-            'Workflow Run SWID': header.index('Workflow Run SWID'),
-            'Root Sample Name': header.index('Root Sample Name'),
-            'Sample Attributes': header.index('Sample Attributes')
-        }
+def WGWT_metrics (table_class, cases_data, base_db_path):
+    '''
+    Fetch data from the WG/WT caches based on the provided table class, workflow_ids, and base_db_path.
+    '''
+    table_obj = table_class()
+    cases = []
+    cases = cases_data['Donor']
 
-        for line in f:
-            row = line.strip().split('\t')
-            if any(workflow_id in row[col_indices['Workflow Run SWID']] for workflow_id in workflow_ids):
-                workflow_swid = row[col_indices['Workflow Run SWID']]
-                donor = row[col_indices['Root Sample Name']]
-                sample_attributes = row[col_indices['Sample Attributes']]
+    con = sqlite3.connect(base_db_path + table_obj.source_db + "/latest")
+    cur = con.cursor()
 
-                metadata_dict = {}
-                for item in sample_attributes.split(';'):
-                    if '=' in item:
-                        key, value = item.split('=', 1)
-                        metadata_dict[key] = value
+    query = f'''
+    SELECT {', '.join(table_obj.columns.values())}
+    FROM {table_obj.source_table[0]}
+    WHERE "Donor" = ?
+    '''
+    
+    extracted_metrics = []
 
-                case.append({
-                    'Donor': donor,
-                    'Group ID': metadata_dict.get('geo_group_id'),
-                    'Library Type': metadata_dict.get('geo_library_source_template_type'),
-                    'Tissue Type': metadata_dict.get('geo_tissue_type'),
-                    'Tissue Origin': metadata_dict.get('geo_tissue_origin'),
-                    'Tissue Preparation': metadata_dict.get('geo_tissue_preparation'),
-                    'External ID': metadata_dict.get('geo_external_name'),
-                })
+    for case in cases:
+        cur.execute(query, (case,))
+        rows = cur.fetchall()
+        extracted_metrics.extend(rows)
 
-    # Convert the list of cases to a DataFrame
-    cases = pd.DataFrame(case).drop_duplicates()
-    return cases
+    columns = [desc[0] for desc in cur.description]
+    res = pd.DataFrame(extracted_metrics, columns=columns)
+    res.columns = [table_obj.headings.get(col, col) for col in columns]
+
+    cur.close()
+    con.close()
+
+    return res
+
