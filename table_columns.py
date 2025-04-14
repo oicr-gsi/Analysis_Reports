@@ -9,10 +9,11 @@ for json keys if possible.
 # add columns that are used in multiple tables here for re-usability 
 class CommonColumns:
     Case = "Donor"
+    SampleID = "sample"    
 
 class CasesTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     GroupID = "Group ID"
     LibraryType = "Library Type"
     TissueType = "Tissue Type"
@@ -23,7 +24,7 @@ class CasesTableColumns:
 
 class DellyTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     NumCalls = "num_calls"
     NumPASS = "num_PASS"
     NumBND = "num_BND"
@@ -34,7 +35,7 @@ class DellyTableColumns:
 
 class Mutect2TableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     NumCalls = "num_calls"
     NumPASS = "num_PASS"
     NumSNPs = "num_SNPs"
@@ -43,7 +44,7 @@ class Mutect2TableColumns:
 
 class RSEMTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     Total = "total"
     PctNonZero = "pct_non_zero"
     Q0 = "Q0"
@@ -58,12 +59,12 @@ class RSEMTableColumns:
 
 class StarFusionTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     NumRecords = "num_records"
     
 class WGCallReadyTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     CoverageDedup = "coverage deduplicated"
     MarkDupPctDup = "mark duplicates_PERCENT_DUPLICATION"
     TotalClusters = "total clusters"
@@ -71,7 +72,7 @@ class WGCallReadyTableColumns:
 
 class WGLaneLevelTableColumns:
     Case = WGCallReadyTableColumns.Case
-    SampleID = "Sample ID"
+    SampleID = CommonColumns.SampleID
     CoverageDedup = WGCallReadyTableColumns.CoverageDedup
     InsertSizeAvg = "insert size average"
     MarkDupPctDup = WGCallReadyTableColumns.MarkDupPctDup
@@ -80,7 +81,7 @@ class WGLaneLevelTableColumns:
 
 class WTCallReadyTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = "SampleID"
     PctCodingBases = "PCT_CODING_BASES"
     TotalClusters = "total clusters"
     MappedReads = "mapped reads"
@@ -88,7 +89,7 @@ class WTCallReadyTableColumns:
 
 class WTLaneLevelTableColumns:
     Case = CommonColumns.Case
-    SampleID = "Sample ID"
+    SampleID = CommonColumns.SampleID
     PctCodingBases = WTCallReadyTableColumns.PctCodingBases
     TotalClusters = WTCallReadyTableColumns.TotalClusters
     MappedReads = WTCallReadyTableColumns.MappedReads

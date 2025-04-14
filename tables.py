@@ -1,5 +1,6 @@
 import pandas as pd
 import sqlite3
+from typing import List
 from table_columns import (
     CommonColumns,
     CasesTableColumns,
@@ -12,7 +13,11 @@ from table_columns import (
     WTCallReadyTableColumns,
     WTLaneLevelTableColumns,
 )
+from plot import(
+    Plot,
+)
 
+NUM_DP = 2
 # The Table class defines each table that is generated
 class Table:
     base_db_path: str       # base path to databases that are queried
@@ -22,7 +27,11 @@ class Table:
     columns: dict           # columns we want from sql table. Must match EXACTLY
     source_table: str       # table we query from
     source_db: str          # database we query from
+    process: List[str]      # workflow names
+    plots = {}
     glossary: dict          # Dict[name of column, definition]
+    pct_stats = set()
+    pipeline_step: str
 
     def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
@@ -39,16 +48,21 @@ class Table:
         }
 
         # Call to extract metrics and get data
-        table_data = extract_metrics(self.__class__, workflow_ids, base_db_path) 
+        table_data = get_metrics(self.__class__, workflow_ids, base_db_path) 
         table_data.columns = table_data.columns.str.strip('"')
-        table_data = table_data.drop(columns=['Sample ID'])
+        table_data = table_data.drop(columns=['SampleID'])
 
-        # Get sample IDs from FPR
-        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left')
-        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
+        cases_data = cases_data.drop(columns=['Workflow Run SWID', 'LIMS ID']).drop_duplicates()
+
+        # Get SampleIDs from FPR
+        table_data = table_data.merge(cases_data[['Donor', 'SampleID']], on='Donor', how='left')
+        column_order = ['Donor', 'SampleID'] + [col for col in table_data.columns if col not in ['Donor', 'SampleID']]
         table_data = table_data[column_order]
-        
-        context["data"] = table_data.to_dict(orient='records')
+
+        if table_data.empty:
+            context["data"] = []
+        else:  
+            context["data"] = table_data.to_dict(orient='records')
 
         return context
 
@@ -58,7 +72,7 @@ class CasesTable(Table):
         self.title = "Donors"
         self.headings = {
             CasesTableColumns.Case: "Donor",
-            CasesTableColumns.SampleID: "Sample ID",
+            CasesTableColumns.SampleID: "SampleID",
             CasesTableColumns.GroupID: "Group ID",
             CasesTableColumns.LibraryType: "Library Type",
             CasesTableColumns.TissueType: "Tissue Type",
@@ -68,7 +82,7 @@ class CasesTable(Table):
         }
         self.columns = {
             CasesTableColumns.Case: "\"Donor\"",
-            CasesTableColumns.SampleID: "\"Sample ID\"",
+            CasesTableColumns.SampleID: "\"SampleID\"",
             CasesTableColumns.GroupID: "\"Group ID\"",
             CasesTableColumns.LibraryType: "\"Library Type\"",
             CasesTableColumns.TissueType: "\"Tissue Type\"",
@@ -142,7 +156,8 @@ class CasesTable(Table):
             "glossary": self.glossary,
         }
 
-        column_order = ['Donor', 'Sample ID'] + [col for col in cases_data.columns if col not in ['Donor', 'Sample ID']]
+        cases_data = cases_data.drop(columns=['Workflow Run SWID', 'LIMS ID']).drop_duplicates()
+        column_order = ['Donor', 'SampleID'] + [col for col in cases_data.columns if col not in ['Donor', 'SampleID']]
         cases_data = cases_data[column_order]
 
         # Get the unique values present in the dataset for each category
@@ -160,7 +175,11 @@ class CasesTable(Table):
         self.glossary[CasesTableColumns.TissueOrigin] = "\n".join([f"{k}: {v}" for k, v in torigin.items()])
         self.glossary[CasesTableColumns.LibraryType] = "\n".join([f"{k}: {v}" for k, v in ltype.items()])
         
-        context["data"] = cases_data.to_dict(orient='records')
+        if cases_data.empty:
+            context["data"] = []
+        else:  
+            context["data"] = cases_data.to_dict(orient='records')
+
         return context
 
 # DellyTable class defines a table for the delly workflow
@@ -169,7 +188,7 @@ class DellyTable(Table):
         self.title = "Genomic Structural Variants"
         self.headings = {
             DellyTableColumns.Case: "Donor",
-            DellyTableColumns.SampleID: "Sample ID",
+            DellyTableColumns.SampleID: "SampleID",
             DellyTableColumns.NumCalls: "SV Calls",
             DellyTableColumns.NumPASS: "SV PASS Calls",
             DellyTableColumns.NumBND: "Translocations",
@@ -180,7 +199,7 @@ class DellyTable(Table):
         }
         self.columns = {
             DellyTableColumns.Case: "\"Donor\"",
-            DellyTableColumns.SampleID: "\"Sample ID\"",
+            DellyTableColumns.SampleID: "\"SampleID\"",
             DellyTableColumns.NumCalls: "\"num_calls\"",
             DellyTableColumns.NumPASS: "\"num_PASS\"",
             DellyTableColumns.NumBND: "\"num_BND\"",
@@ -189,8 +208,17 @@ class DellyTable(Table):
             DellyTableColumns.NumINS: "\"num_INS\"",
             DellyTableColumns.NumINV: "\"num_INV\"",
         }
+        self.pipeline_step = "calls.structuralvariants"
         self.source_table = ["analysis_delly_analysis_delly_1"]
         self.source_db = "analysis_delly"
+        self.process = ["delly_matched_by_tumor_group", "delly"]
+        self.plots = {
+            DellyTableColumns.NumPASS: Plot(
+                title="SV PASS Calls",
+                x_axis="SampleIDs",
+                y_axis="SV PASS Calls"
+            ),
+        }
         self.glossary = {
             DellyTableColumns.NumCalls: "The number of somatic structural variant calls identified by delly",
             DellyTableColumns.NumPASS: "The number of structural variant calls marked as PASS",
@@ -207,7 +235,7 @@ class Mutect2Table(Table):
         self.title = "Somatic Mutations"
         self.headings = {
             Mutect2TableColumns.Case: "Donor",
-            Mutect2TableColumns.SampleID: "Sample ID",
+            Mutect2TableColumns.SampleID: "SampleID",
             Mutect2TableColumns.NumCalls: "Calls",
             Mutect2TableColumns.NumPASS: "PASS Calls",
             Mutect2TableColumns.NumSNPs: "SNPs",
@@ -216,15 +244,30 @@ class Mutect2Table(Table):
         }
         self.columns = {
             Mutect2TableColumns.Case: "\"Donor\"",
-            Mutect2TableColumns.SampleID: "\"Sample ID\"",
+            Mutect2TableColumns.SampleID: "\"SampleID\"",
             Mutect2TableColumns.NumCalls: "\"num_calls\"",
             Mutect2TableColumns.NumPASS: "\"num_PASS\"",
             Mutect2TableColumns.NumSNPs: "\"num_SNPs\"",
             Mutect2TableColumns.NumIndels: "\"num_indels\"",
             Mutect2TableColumns.TITVRatio: "\"titv_ratio\"",
         }
+        self.pipeline_step = "calls.mutations"
         self.source_table = ["analysis_mutect2_analysis_mutect2_1"]
         self.source_db = "analysis_mutect2"
+        self.process = ["mutect2_matched_by_tumor_group", "mutect2"]
+        self.plots = {
+            Mutect2TableColumns.NumPASS: Plot(
+                title="Mutation Calls",
+                x_axis="SampleIDs",
+                y_axis="Mutation Calls"
+            ),
+            Mutect2TableColumns.TITVRatio: Plot(
+                title="Ti/Tv",
+                x_axis="SampleIDs",
+                y_axis="Ti/Tv",
+                lo=0,
+            ),
+        }
         self.glossary = {
             Mutect2TableColumns.NumCalls: "Total number of calls identified by Mutect2",
             Mutect2TableColumns.NumPASS: "Total number of PASS calls",
@@ -239,7 +282,7 @@ class RSEMTable(Table):
         self.title = "Gene Expression"
         self.headings = {
             RSEMTableColumns.Case: "Donor",
-            RSEMTableColumns.SampleID: "Sample ID",
+            RSEMTableColumns.SampleID: "SampleID",
             RSEMTableColumns.Total: "Total Reads",
             RSEMTableColumns.PctNonZero: "Percent Non-zero",
             RSEMTableColumns.Q0_05: "0.05 Quantile",
@@ -248,15 +291,36 @@ class RSEMTable(Table):
         }
         self.columns = {
             RSEMTableColumns.Case: "\"Donor\"",
-            RSEMTableColumns.SampleID: "\"Sample ID\"",
+            RSEMTableColumns.SampleID: "\"SampleID\"",
             RSEMTableColumns.Total: "\"total\"",
             RSEMTableColumns.PctNonZero: "\"pct_non_zero\"",
             RSEMTableColumns.Q0_05: "\"Q0.05\"",
             RSEMTableColumns.Q0_5: "\"Q0.5\"",
             RSEMTableColumns.Q0_95: "\"Q0.95\"",
         }
+        self.pipeline_step = "calls.expression"
         self.source_table = ["analysis_rsem_analysis_rsem_1"]
         self.source_db = "analysis_rsem"
+        self.process = ["rsem"]
+        self.pct_stats = set(
+            [
+                RSEMTableColumns.PctNonZero,
+            ]
+        )
+        self.plots = {
+            "pct_non_zero": Plot(
+                title="Percent Expressed",
+                x_axis="SampleID",
+                y_axis="Percent Expressed (%)",
+                hi=100,
+                lo=0,
+            ),
+            "Q0.5": Plot(
+                title="Median TPM",
+                x_axis="SampleID",
+                y_axis="Median TPM",
+            ),
+        }
         self.glossary = {
             RSEMTableColumns.Total: "Total number of reads assigned to a gene",
             RSEMTableColumns.PctNonZero: "Percentage of non-zero read counts",
@@ -271,16 +335,25 @@ class StarFusionTable(Table):
         self.title = "Gene Fusions"
         self.headings = {
             StarFusionTableColumns.Case: "Donor",
-            StarFusionTableColumns.SampleID: "Sample ID",
+            StarFusionTableColumns.SampleID: "SampleID",
             StarFusionTableColumns.NumRecords: "Fusion Calls",
         }
         self.columns = {
             StarFusionTableColumns.Case: "\"Donor\"",
-            StarFusionTableColumns.SampleID: "\"Sample ID\"",
+            StarFusionTableColumns.SampleID: "\"SampleID\"",
             StarFusionTableColumns.NumRecords: "\"num_records\"",
         }
+        self.pipeline_step = "calls.fusions"
         self.source_table = ["analysis_starfusion_analysis_starfusion_1"]
         self.source_db = "analysis_starfusion"
+        self.process = ["starfusion", "starFusion"]
+        self.plots = {
+            StarFusionTableColumns.NumRecords: Plot(
+                title="Fusion Calls",
+                x_axis="SampleID",
+                y_axis="Fusion Calls"
+            )
+        }
         self.glossary = {
             StarFusionTableColumns.NumRecords: "Number of gene fusions identified by StarFusion",
         }  
@@ -291,7 +364,7 @@ class WGCallReadyTable(Table):
         self.title = "Whole Genome Libraries, tumour and matched normal"
         self.headings = {
             WGCallReadyTableColumns.Case: "Donor",
-            WGCallReadyTableColumns.SampleID: "Sample ID",
+            WGCallReadyTableColumns.SampleID: "SampleID",
             WGCallReadyTableColumns.CoverageDedup: "Coverage Depth",
             WGCallReadyTableColumns.MarkDupPctDup: "Duplication (%)",
             WGCallReadyTableColumns.TotalClusters: "Read Pairs",
@@ -299,7 +372,7 @@ class WGCallReadyTable(Table):
         }
         self.columns = {
             WGCallReadyTableColumns.Case: "\"Donor\"",
-            WGCallReadyTableColumns.SampleID: "\"Sample ID\"",
+            WGCallReadyTableColumns.SampleID: "\"SampleID\"",
             WGCallReadyTableColumns.CoverageDedup: "\"coverage deduplicated\"",
             WGCallReadyTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
             WGCallReadyTableColumns.TotalClusters: "\"total clusters\"",
@@ -326,15 +399,13 @@ class WGCallReadyTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
-        table_data.columns = table_data.columns.str.strip('"')
-        table_data = table_data.drop(columns=['Sample ID'])
+        table_data = CallReady_metrics(self.__class__, cases_data, base_db_path) 
+        
+        if table_data.empty:
+            context["data"] = []
+        else:  
+            context["data"] = table_data.to_dict(orient='records')
 
-        # Get sample IDs from FPR
-        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left').drop_duplicates()
-        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
-        table_data = table_data[column_order]
-        context["data"] = table_data.to_dict(orient='records')
         return context
 
 #WGLaneLevelTable class defines a table for the bamqc4 workflow
@@ -343,7 +414,7 @@ class WGLaneLevelTable(Table):
         self.title = "Whole Genome Libraries, tumour and matched normal"
         self.headings = {
             WGLaneLevelTableColumns.Case: "Donor",
-            WGLaneLevelTableColumns.SampleID: "Sample ID",
+            WGLaneLevelTableColumns.SampleID: "SampleID",
             WGLaneLevelTableColumns.CoverageDedup: "Coverage Depth",
             WGLaneLevelTableColumns.InsertSizeAvg: "Insert Size",
             WGLaneLevelTableColumns.MarkDupPctDup: "Duplication (%)",
@@ -352,7 +423,7 @@ class WGLaneLevelTable(Table):
         }
         self.columns = {
             WGLaneLevelTableColumns.Case: "\"Donor\"",
-            WGLaneLevelTableColumns.SampleID: "\"Sample ID\"",
+            WGLaneLevelTableColumns.SampleID: "\"sample\"",
             WGLaneLevelTableColumns.CoverageDedup: "\"coverage deduplicated\"",
             WGLaneLevelTableColumns.InsertSizeAvg: "\"insert size average\"",
             WGLaneLevelTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
@@ -371,6 +442,48 @@ class WGLaneLevelTable(Table):
             WGLaneLevelTableColumns.MappedReads: "Percent of reads mapping to the genomic reference",
 
         }
+    
+    def get_data(self, cases_data, base_db_path):
+        '''
+        Fetch metrics data for WG libraries and map Donor using SampleID.
+        '''
+        sample_ids = cases_data['SampleID'].tolist()
+        con = sqlite3.connect(base_db_path + self.source_db + "/latest")
+        cur = con.cursor()
+
+        query = f'''
+        SELECT {', '.join(self.columns.values())}
+        FROM {self.source_table[0]}
+        WHERE "sample" = ?
+        '''
+
+        extracted_metrics = []
+        for sample_id in sample_ids:
+            cur.execute(query, (sample_id.strip(),))
+            rows = cur.fetchall()
+            extracted_metrics.extend(rows)
+
+        columns = [desc[0] for desc in cur.description]
+        res = pd.DataFrame(extracted_metrics, columns=columns)
+        res.columns = [self.headings.get(col, col) for col in columns]
+
+        cur.close()
+        con.close()
+
+        res.columns = res.columns.str.strip('"')
+        res = res.drop(columns=['Donor'], errors='ignore')
+        res.rename(columns={res.columns[0]: 'SampleID'}, inplace=True)
+
+        # Prepare donor mapping and merge
+        cases_data = cases_data.drop(columns=['Workflow Run SWID', 'LIMS ID'], errors='ignore').drop_duplicates()
+        donor_map = cases_data.set_index('SampleID')['Donor']
+        res['Donor'] = res['SampleID'].map(donor_map)
+
+        # Reorder columns
+        col_order = ['Donor', 'SampleID'] + [col for col in res.columns if col not in ['Donor', 'SampleID']]
+        res = res[col_order].drop_duplicates()
+
+        return res
 
     def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
@@ -382,15 +495,14 @@ class WGLaneLevelTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
-        table_data.columns = table_data.columns.str.strip('"')
-        table_data = table_data.drop(columns=['Sample ID'])
 
-        # Get sample IDs from FPR
-        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left')
-        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
-        table_data = table_data[column_order]
-        context["data"] = table_data.to_dict(orient='records')
+        table_data = self.get_data(cases_data, base_db_path)
+        
+        if table_data.empty:
+            context["data"] = []
+        else:  
+            context["data"] = table_data.to_dict(orient='records')
+
         return context
 
 
@@ -400,7 +512,7 @@ class WTCallReadyTable(Table):
         self.title = "Whole Transcriptome Libraries, tumour only"
         self.headings = {
             WTCallReadyTableColumns.Case: "Donor",
-            WTCallReadyTableColumns.SampleID: "Sample ID",
+            WTCallReadyTableColumns.SampleID: "SampleID",
             WTCallReadyTableColumns.PctCodingBases: "Percent Coding (%)",
             WTCallReadyTableColumns.TotalClusters: "Read Pairs",
             WTCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
@@ -408,7 +520,7 @@ class WTCallReadyTable(Table):
         }
         self.columns = {
             WTCallReadyTableColumns.Case: "\"Donor\"",
-            WTCallReadyTableColumns.SampleID: "\"Sample ID\"",
+            WTCallReadyTableColumns.SampleID: "\"SampleID\"",
             WTCallReadyTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
             WTCallReadyTableColumns.TotalClusters: "\"total clusters\"",
             WTCallReadyTableColumns.MappedReads: """
@@ -438,15 +550,13 @@ class WTCallReadyTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
-        table_data.columns = table_data.columns.str.strip('"')
-        table_data = table_data.drop(columns=['Sample ID'])
+        table_data = CallReady_metrics(self.__class__, cases_data, base_db_path) 
+        
+        if table_data.empty:
+            context["data"] = []
+        else:  
+            context["data"] = table_data.to_dict(orient='records')
 
-        # Get sample IDs from FPR
-        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left').drop_duplicates()
-        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
-        table_data = table_data[column_order]
-        context["data"] = table_data.to_dict(orient='records')
         return context
 
 #WTLaneLevelTable class defines a table for the rnaseqqc2 workflow
@@ -456,7 +566,7 @@ class WTLaneLevelTable(Table):
         self.blurb = ""
         self.headings = {
             WTLaneLevelTableColumns.Case: "Donor",
-            WTLaneLevelTableColumns.SampleID: "Sample ID",
+            WTLaneLevelTableColumns.SampleID: "SampleID",
             WTLaneLevelTableColumns.PctCodingBases: "Percent Coding (%)",
             WTLaneLevelTableColumns.TotalClusters: "Read Pairs",
             WTLaneLevelTableColumns.MappedReads: "Mapped Reads (%)",
@@ -465,7 +575,7 @@ class WTLaneLevelTable(Table):
         }
         self.columns = {
             WTLaneLevelTableColumns.Case: "\"Donor\"",
-            WTLaneLevelTableColumns.SampleID: "\"Sample ID\"",
+            WTLaneLevelTableColumns.SampleID: "\"sample\"",
             WTLaneLevelTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
             WTLaneLevelTableColumns.TotalClusters: "\"total clusters\"",
             WTLaneLevelTableColumns.MappedReads: """
@@ -485,6 +595,67 @@ class WTLaneLevelTable(Table):
             WTLaneLevelTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
 
         }
+    
+    def get_data(self, cases_data, base_db_path):
+        '''
+        Fetch metrics data for WT libraries and map Donor and SampleID using LIMS ID.
+        '''
+        lims_ids = cases_data['LIMS ID']
+
+        con = sqlite3.connect(base_db_path + self.source_db + "/latest")
+        cur = con.cursor()
+
+        query = f'''
+        SELECT {', '.join(self.columns.values())}
+        FROM {self.source_table[0]}
+        WHERE "Pinery Lims ID" = ?
+        '''
+
+        extracted_metrics = []
+        lims_id_tracker = []
+
+        for lims_id_list in lims_ids:
+            lims_id_values = lims_id_list.split(',')
+
+            for lims_id in lims_id_values:
+                lims_id = lims_id.strip()
+                cur.execute(query, (lims_id,))
+                rows = cur.fetchall()
+                extracted_metrics.extend(rows)
+                lims_id_tracker.extend([lims_id] * len(rows))  
+
+        if not extracted_metrics:
+            cur.close()
+            con.close()
+            return pd.DataFrame()  
+
+        columns = [desc[0] for desc in cur.description]
+        res = pd.DataFrame(extracted_metrics, columns=columns)
+        res.columns = [self.headings.get(col, col) for col in columns]
+
+        res.columns = res.columns.str.strip('"') 
+        res = res.drop(columns=['Donor', 'sample'])
+        res['LIMS ID'] = lims_id_tracker  
+
+        cur.close()
+        con.close()
+
+        # Explode cases_data so each LIMS ID gets its own row
+        cases = cases_data.copy()
+        cases['LIMS ID'] = cases['LIMS ID'].str.split(',')
+        cases = cases.explode('LIMS ID')
+        cases['LIMS ID'] = cases['LIMS ID'].str.strip()
+
+        # Merge Donor and SampleID from exploded cases_data using LIMS ID
+        cases = cases[['LIMS ID', 'Donor', 'SampleID']].drop_duplicates()
+        res = res.merge(cases, on='LIMS ID', how='left')
+        res.drop(columns=['LIMS ID'], inplace=True)
+
+        # Reorder columns
+        column_order = ['Donor', 'SampleID'] + [col for col in res.columns if col not in ['Donor', 'SampleID', 'LIMS ID']]
+        res = res[column_order].drop_duplicates()
+
+        return res
 
     def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
@@ -496,19 +667,18 @@ class WTLaneLevelTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = WGWT_metrics(self.__class__, cases_data, base_db_path) 
-        table_data.columns = table_data.columns.str.strip('"')
-        table_data = table_data.drop(columns=['Sample ID'])
+        table_data = self.get_data(cases_data, base_db_path)
+        
+        if table_data.empty:
+            context["data"] = []
+        else:  
+            context["data"] = table_data.to_dict(orient='records')
 
-        # Get sample IDs from FPR
-        table_data = table_data.merge(cases_data[['Donor', 'Sample ID']], on='Donor', how='left')
-        column_order = ['Donor', 'Sample ID'] + [col for col in table_data.columns if col not in ['Donor', 'Sample ID']]
-        table_data = table_data[column_order]
-        context["data"] = table_data.to_dict(orient='records')
         return context
 
 
-def extract_metrics(table_class, workflow_ids, base_db_path):
+
+def get_metrics(table_class, workflow_ids, base_db_path):
     '''
     Fetch data from the database based on the provided table class, workflow_ids, and base_db_path.
     '''
@@ -539,7 +709,8 @@ def extract_metrics(table_class, workflow_ids, base_db_path):
 
     return res
 
-def WGWT_metrics (table_class, cases_data, base_db_path):
+
+def CallReady_metrics(table_class, cases_data, base_db_path):
     '''
     Fetch data from the WG/WT caches based on the provided table class, workflow_ids, and base_db_path.
     '''
@@ -569,6 +740,14 @@ def WGWT_metrics (table_class, cases_data, base_db_path):
 
     cur.close()
     con.close()
+
+    res.columns = res.columns.str.strip('"')
+    res = res.drop(columns=['SampleID'])
+
+    # Get SampleIDs from FPR
+    res = res.merge(cases_data[['Donor', 'SampleID']], on='Donor', how='left').drop_duplicates()
+    column_order = ['Donor', 'SampleID'] + [col for col in res.columns if col not in ['Donor', 'SampleID']]
+    res = res[column_order]
 
     return res
 

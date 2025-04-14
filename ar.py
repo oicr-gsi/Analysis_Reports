@@ -21,19 +21,19 @@ from section import (
 
 # Report class outlines the structure and order or a report
 class Report:
-    def __init__(self, workflow_ids, base_db_path, cases_data):
+    def __init__(self, workflow_ids, base_db_path, cases_data, project):
         self.workflow_ids = workflow_ids
         self.base_db_path = base_db_path
         self.cases_data = cases_data
-        self.header = HeaderSection()  
+        self.header = HeaderSection(project)  
         self.sections = [
             CasesSection(),
-            DellySection(),
+            RawSeqDataSection(),
+            CallReadyAlignmentsSection(),
             Mutect2Section(),
+            DellySection(),
             RSEMSection(),
             StarFusionSection(),
-            CallReadyAlignmentsSection(),
-            RawSeqDataSection(),
         ]
 
     def load_context(self):
@@ -43,7 +43,8 @@ class Report:
         }
         for section in self.sections:
             section_context = section.load_context(self.workflow_ids, self.base_db_path, self.cases_data)
-            report_context["sections"][section.name] = section_context
+            if section_context:
+                report_context["sections"][section.name] = section_context
 
         return report_context
 
@@ -76,12 +77,17 @@ def extract_workflow_ids(data):
 def query_provenance_file(file_provenance_path, workflow_ids):
     workflow = re.compile('|'.join(workflow_ids))
     case = []
+    lims_dict = {}
+    study_titles = set()
+
     with gzip.open(file_provenance_path, 'rt') as f:
         header = f.readline().strip().split('\t')
         col_indices = {
             'Workflow Run SWID': header.index('Workflow Run SWID'),
             'Root Sample Name': header.index('Root Sample Name'),
-            'Sample Attributes': header.index('Sample Attributes')
+            'Sample Attributes': header.index('Sample Attributes'),
+            'LIMS ID': header.index('LIMS ID'),
+            'Study Title': header.index('Study Title')
         }
 
         for line in f:
@@ -90,6 +96,13 @@ def query_provenance_file(file_provenance_path, workflow_ids):
                 workflow_swid = row[col_indices['Workflow Run SWID']]
                 donor = row[col_indices['Root Sample Name']]
                 sample_attributes = row[col_indices['Sample Attributes']]
+                lims_id = row[col_indices['LIMS ID']]
+                study_title = row[col_indices['Study Title']]
+                study_titles.add(study_title)
+
+                if workflow_swid not in lims_dict:
+                    lims_dict[workflow_swid] = set()  
+                lims_dict[workflow_swid].add(lims_id)
 
                 metadata_dict = {}
                 for item in sample_attributes.split(';'):
@@ -105,15 +118,27 @@ def query_provenance_file(file_provenance_path, workflow_ids):
                     'Tissue Origin': metadata_dict.get('geo_tissue_origin'),
                     'Tissue Preparation': metadata_dict.get('geo_tissue_preparation'),
                     'External ID': metadata_dict.get('geo_external_name'),
+                    'Workflow Run SWID': workflow_swid,
                 })
 
     # Convert the list of cases to a DataFrame
     cases = pd.DataFrame(case).drop_duplicates()
-    cases['Sample ID'] = cases.apply(
+
+    cases['LIMS ID'] = cases['Workflow Run SWID'].map(
+        lambda swid: ','.join(lims_dict.get(swid, [])) 
+    )
+
+    cases['SampleID'] = cases.apply(
             lambda row: f"{row['Donor']}_{row['Tissue Origin']}_{row['Tissue Type']}_{row['Library Type']}_{row['Group ID']}",
             axis=1
         )
-    return cases
+    
+    if len(study_titles) == 1:
+        project = study_titles.pop()
+    else:
+        project = ""
+
+    return cases, project
 
 
 def makepdf(html, outputfile):
@@ -156,9 +181,9 @@ def generate_report(input, output, use_stage):
     fp_file = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz"
     workflow_ids = extract_workflow_ids(data)
     base_db_path = "/scratch2/groups/gsi/staging/qcetl_v1/" if use_stage else "/scratch2/groups/gsi/production/qcetl_v1/"
-    cases_data = query_provenance_file(fp_file, workflow_ids)
+    cases_data, project = query_provenance_file(fp_file, workflow_ids)
 
-    report = Report(workflow_ids, base_db_path, cases_data)
+    report = Report(workflow_ids, base_db_path, cases_data, project)
     report_context = report.load_context()
 
     # Generate HTML content using Jinja2 templates

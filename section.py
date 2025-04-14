@@ -34,11 +34,21 @@ class Section:
             "title": self.title,
             "blurb": self.blurb,
             "tables": {},
+            "plots": {},
         }
+        has_data = False 
+
         # For each table in the section, load its context
         for tcount, table in enumerate(self.tables):
             table_context = table.load_context(workflow_ids, base_db_path, cases_data)  # Pass workflow_ids, cases_data and base_db_path to table
-            context["tables"][tcount] = table_context  # Store the table context in the section context
+            
+            if table_context["data"]:
+                context["tables"][tcount] = table_context 
+                has_data = True
+
+        if not has_data:
+            return None
+
         return context
 
 class RawSeqDataSection(Section):
@@ -107,12 +117,13 @@ class DellySection(Section):
 
 # HeaderSection class defines the header of the report
 class HeaderSection(Section):
-    def __init__(self):
-        self.title = "IRIS" 
+    def __init__(self, project):
+        self.project = project
+        self.title = project 
         self.name = "header"
         self.blurb = '''
         The data release report summarizes a variety of metrics generated from our 
-        quality control and analysis workflows. All IRIS cases are processed through 
+        quality control and analysis workflows. All cases are processed through 
         our WGTS (Whole Genome, Transcriptome) sequencing and analysis pipelines, and
         include a single tumour sample with a matched normal.
         '''
@@ -126,6 +137,7 @@ class HeaderSection(Section):
         - A dictionary containing the title, current date, and the blurb for the header section
         '''
         context = {
+            "project": self.project,
             "title": self.title,
             "date": date.today().strftime("%Y-%m-%d"), 
             "blurb": self.blurb,
