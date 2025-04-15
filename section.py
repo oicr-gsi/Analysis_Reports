@@ -34,7 +34,6 @@ class Section:
             "title": self.title,
             "blurb": self.blurb,
             "tables": {},
-            "plots": {},
         }
         has_data = False 
 

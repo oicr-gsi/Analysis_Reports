@@ -1,6 +1,6 @@
 import pandas as pd
 import sqlite3
-from typing import List
+from typing import List, Dict, Any
 from table_columns import (
     CommonColumns,
     CasesTableColumns,
@@ -28,10 +28,27 @@ class Table:
     source_table: str       # table we query from
     source_db: str          # database we query from
     process: List[str]      # workflow names
-    plots = {}
+    data = {}               # data to be displayed in table
     glossary: dict          # Dict[name of column, definition]
     pct_stats = set()
     pipeline_step: str
+
+    def table_data(self, workflow_ids, base_db_path, cases_data):
+        # Call to extract metrics and get data
+        data = get_metrics(self.__class__, workflow_ids, base_db_path) 
+      
+        data.columns = data.columns.str.strip('"')
+        data = data.drop(columns=['SampleID'])
+
+        cases_data = cases_data.drop(columns=['Workflow Run SWID', 'LIMS ID']).drop_duplicates()
+
+        # Get SampleIDs from FPR
+        data = data.merge(cases_data[['Donor', 'SampleID']], on='Donor', how='left')
+        column_order = ['Donor', 'SampleID'] + [col for col in data.columns if col not in ['Donor', 'SampleID']]
+        data = data[column_order]
+        
+        return data
+        
 
     def load_context(self, workflow_ids, base_db_path, cases_data):
         '''
@@ -47,24 +64,16 @@ class Table:
             "glossary": self.glossary,
         }
 
-        # Call to extract metrics and get data
-        table_data = get_metrics(self.__class__, workflow_ids, base_db_path) 
-        table_data.columns = table_data.columns.str.strip('"')
-        table_data = table_data.drop(columns=['SampleID'])
+        data = self.table_data(workflow_ids, base_db_path, cases_data)
+        data = data.sort_values(by=['Donor', 'Library Type'])
 
-        cases_data = cases_data.drop(columns=['Workflow Run SWID', 'LIMS ID']).drop_duplicates()
-
-        # Get SampleIDs from FPR
-        table_data = table_data.merge(cases_data[['Donor', 'SampleID']], on='Donor', how='left')
-        column_order = ['Donor', 'SampleID'] + [col for col in table_data.columns if col not in ['Donor', 'SampleID']]
-        table_data = table_data[column_order]
-
-        if table_data.empty:
+        if data.empty:
             context["data"] = []
         else:  
-            context["data"] = table_data.to_dict(orient='records')
+            context["data"] = data.to_dict(orient='records')
 
         return context
+
 
 # CasesTable class defines the Cases table
 class CasesTable(Table):
@@ -145,17 +154,7 @@ class CasesTable(Table):
             'CH': 'ChIP-Seq', 'BS': 'Bisulphite Sequencing', 'AS': 'ATAC-Seq'
         }
 
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        '''
-        Load the context for the Cases Table. 
-        '''
-        context = {
-            "title": self.title,
-            "headings": self.headings,
-            "columns": self.columns,
-            "glossary": self.glossary,
-        }
-
+    def case_data(self, workflow_ids, base_db_path, cases_data):
         cases_data = cases_data.drop(columns=['Workflow Run SWID', 'LIMS ID']).drop_duplicates()
         column_order = ['Donor', 'SampleID'] + [col for col in cases_data.columns if col not in ['Donor', 'SampleID']]
         cases_data = cases_data[column_order]
@@ -175,10 +174,25 @@ class CasesTable(Table):
         self.glossary[CasesTableColumns.TissueOrigin] = "\n".join([f"{k}: {v}" for k, v in torigin.items()])
         self.glossary[CasesTableColumns.LibraryType] = "\n".join([f"{k}: {v}" for k, v in ltype.items()])
         
-        if cases_data.empty:
+        return cases_data
+
+    def load_context(self, workflow_ids, base_db_path, cases_data):
+        '''
+        Load the context for the Cases Table. 
+        '''
+        context = {
+            "title": self.title,
+            "headings": self.headings,
+            "columns": self.columns,
+            "glossary": self.glossary,
+        }
+        data = self.case_data(workflow_ids, base_db_path, cases_data)
+        data = data.sort_values(by=['Donor', 'Library Type'])
+
+        if data.empty:
             context["data"] = []
         else:  
-            context["data"] = cases_data.to_dict(orient='records')
+            context["data"] = data.to_dict(orient='records')
 
         return context
 
@@ -399,12 +413,13 @@ class WGCallReadyTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = CallReady_metrics(self.__class__, cases_data, base_db_path) 
+        data = CallReady_metrics(self.__class__, cases_data, base_db_path) 
+        data = data.sort_values(by=['Donor', 'Library Type'])
         
-        if table_data.empty:
+        if data.empty:
             context["data"] = []
         else:  
-            context["data"] = table_data.to_dict(orient='records')
+            context["data"] = data.to_dict(orient='records')
 
         return context
 
@@ -496,12 +511,13 @@ class WGLaneLevelTable(Table):
             "glossary": self.glossary,
         }
 
-        table_data = self.get_data(cases_data, base_db_path)
+        data = self.get_data(cases_data, base_db_path)
+        data = data.sort_values(by=['Donor', 'Library Type'])
         
-        if table_data.empty:
+        if data.empty:
             context["data"] = []
         else:  
-            context["data"] = table_data.to_dict(orient='records')
+            context["data"] = data.to_dict(orient='records')
 
         return context
 
@@ -550,12 +566,13 @@ class WTCallReadyTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = CallReady_metrics(self.__class__, cases_data, base_db_path) 
+        data = CallReady_metrics(self.__class__, cases_data, base_db_path) 
+        data = data.sort_values(by=['Donor', 'Library Type'])
         
-        if table_data.empty:
+        if data.empty:
             context["data"] = []
         else:  
-            context["data"] = table_data.to_dict(orient='records')
+            context["data"] = data.to_dict(orient='records')
 
         return context
 
@@ -667,12 +684,13 @@ class WTLaneLevelTable(Table):
             "columns": self.columns,
             "glossary": self.glossary,
         }
-        table_data = self.get_data(cases_data, base_db_path)
+        data = self.get_data(cases_data, base_db_path)
+        data = data.sort_values(by=['Donor', 'Library Type'])
         
-        if table_data.empty:
+        if data.empty:
             context["data"] = []
         else:  
-            context["data"] = table_data.to_dict(orient='records')
+            context["data"] = data.to_dict(orient='records')
 
         return context
 
