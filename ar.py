@@ -4,6 +4,7 @@ import json
 import argparse
 import re
 import gzip
+import shutil
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
@@ -13,6 +14,7 @@ from section import (
     CasesSection,
     DellySection, 
     Mutect2Section, 
+    PurpleSection,
     RSEMSection,
     StarFusionSection,
     CallReadyAlignmentsSection,
@@ -21,9 +23,7 @@ from section import (
 
 # Report class outlines the structure and order or a report
 class Report:
-    def __init__(self, workflow_ids, base_db_path, cases_data, project):
-        self.workflow_ids = workflow_ids
-        self.base_db_path = base_db_path
+    def __init__(self, cases_data, project):
         self.cases_data = cases_data
         self.header = HeaderSection(project)  
         self.sections = [
@@ -31,6 +31,7 @@ class Report:
             RawSeqDataSection(),
             CallReadyAlignmentsSection(),
             Mutect2Section(),
+            #PurpleSection(),
             DellySection(),
             RSEMSection(),
             StarFusionSection(),
@@ -42,7 +43,7 @@ class Report:
             "sections": {}
         }
         for section in self.sections:
-            section_context = section.load_context(self.workflow_ids, self.base_db_path, self.cases_data)
+            section_context = section.load_context(self.cases_data)
             if section_context:
                 report_context["sections"][section.name] = section_context
 
@@ -73,70 +74,102 @@ def extract_workflow_ids(data):
 
     return workflow_ids
 
+def get_fp_records(provenance, workflow_ids):
+    '''
+    Extracts records from the file_provenance_path that match the workflow_ids.
+    Parameters
+    ----------
+    - file_provenance_path (str): Path to the file provenance file.
+    - workflow_ids (list): List of workflow IDs to filter by.
+    Returns
+    -------
+    - list: List of records matching the workflow IDs.
+    '''
+    records = []
 
-def query_provenance_file(file_provenance_path, workflow_ids):
-    workflow = re.compile('|'.join(workflow_ids))
+    if is_gzipped(provenance):
+        infile = gzip.open(provenance, 'rt', errors='ignore')
+    else:
+        infile = open(provenance, 'r', errors='ignore')
+
+    header = infile.readline().strip().split('\t')
+    if 'Workflow Run SWID' not in header:
+        infile.close()
+        raise ValueError("'Workflow Run SWID' column not found in header.")
+
+    swid_idx = header.index('Workflow Run SWID')
+    workflow_ids_set = set(workflow_ids)
+    for line in infile:
+        row = line.strip().split('\t')
+        if len(row) > swid_idx and row[swid_idx] in workflow_ids_set:
+            records.append(row)
+
+    infile.close()
+    return header, records
+
+def parse_fp_records(header, records):
+    '''
+    Parses the file provenance records and returns a DataFrame and the project name.
+    Parameters
+    ----------
+    - header (list): List of column names.
+    - records (list): List of fp rows to parse.
+    Returns
+    -------
+    - DataFrame: Parsed DataFrame with relevant columns.
+    '''
+    col_indices = {
+        'Workflow Run ID': header.index('Workflow Run SWID'),
+        'Root Sample Name': header.index('Root Sample Name'),
+        'Sample Attributes': header.index('Sample Attributes'),
+        'LIMS ID': header.index('LIMS ID'),
+        'Study Title': header.index('Study Title'),
+        'Sample Name': header.index('Sample Name'),
+    }
+
     case = []
     lims_dict = {}
     study_titles = set()
 
-    with gzip.open(file_provenance_path, 'rt') as f:
-        header = f.readline().strip().split('\t')
-        col_indices = {
-            'Workflow Run SWID': header.index('Workflow Run SWID'),
-            'Root Sample Name': header.index('Root Sample Name'),
-            'Sample Attributes': header.index('Sample Attributes'),
-            'LIMS ID': header.index('LIMS ID'),
-            'Study Title': header.index('Study Title')
-        }
+    for row in records:
+        workflow_swid = row[col_indices['Workflow Run ID']]
+        donor = row[col_indices['Root Sample Name']]
+        sample_attributes = row[col_indices['Sample Attributes']]
+        lims_id = row[col_indices['LIMS ID']]
+        study_title = row[col_indices['Study Title']]
+        sample_name = row[col_indices['Sample Name']]
+        study_titles.add(study_title)
 
-        for line in f:
-            row = line.strip().split('\t')
-            if any(workflow_id in row[col_indices['Workflow Run SWID']] for workflow_id in workflow_ids):
-                workflow_swid = row[col_indices['Workflow Run SWID']]
-                donor = row[col_indices['Root Sample Name']]
-                sample_attributes = row[col_indices['Sample Attributes']]
-                lims_id = row[col_indices['LIMS ID']]
-                study_title = row[col_indices['Study Title']]
-                study_titles.add(study_title)
+        if workflow_swid not in lims_dict:
+            lims_dict[workflow_swid] = set()
+        lims_dict[workflow_swid].add(lims_id)
 
-                if workflow_swid not in lims_dict:
-                    lims_dict[workflow_swid] = set()  
-                lims_dict[workflow_swid].add(lims_id)
+        metadata_dict = {}
+        for item in sample_attributes.split(';'):
+            if '=' in item:
+                key, value = item.split('=', 1)
+                metadata_dict[key] = value
 
-                metadata_dict = {}
-                for item in sample_attributes.split(';'):
-                    if '=' in item:
-                        key, value = item.split('=', 1)
-                        metadata_dict[key] = value
+        case.append({
+            'Donor': donor,
+            'Group ID': metadata_dict.get('geo_group_id'),
+            'Library Type': metadata_dict.get('geo_library_source_template_type'),
+            'Tissue Type': metadata_dict.get('geo_tissue_type'),
+            'Tissue Origin': metadata_dict.get('geo_tissue_origin'),
+            'Tissue Preparation': metadata_dict.get('geo_tissue_preparation'),
+            'External ID': metadata_dict.get('geo_external_name'),
+            'Workflow Run ID': workflow_swid,
+            'Sample Name': sample_name,
+        })
 
-                case.append({
-                    'Donor': donor,
-                    'Group ID': metadata_dict.get('geo_group_id'),
-                    'Library Type': metadata_dict.get('geo_library_source_template_type'),
-                    'Tissue Type': metadata_dict.get('geo_tissue_type'),
-                    'Tissue Origin': metadata_dict.get('geo_tissue_origin'),
-                    'Tissue Preparation': metadata_dict.get('geo_tissue_preparation'),
-                    'External ID': metadata_dict.get('geo_external_name'),
-                    'Workflow Run SWID': workflow_swid,
-                })
-
-    # Convert the list of cases to a DataFrame
     cases = pd.DataFrame(case).drop_duplicates()
-
-    cases['LIMS ID'] = cases['Workflow Run SWID'].map(
-        lambda swid: ','.join(lims_dict.get(swid, [])) 
-    )
-
+    cases['LIMS ID'] = cases['Workflow Run ID'].map(
+        lambda swid: ','.join(lims_dict.get(swid, [])))
     cases['SampleID'] = cases.apply(
-            lambda row: f"{row['Donor']}_{row['Tissue Origin']}_{row['Tissue Type']}_{row['Library Type']}_{row['Group ID']}",
-            axis=1
-        )
-    
-    if len(study_titles) == 1:
-        project = study_titles.pop()
-    else:
-        project = ""
+        lambda row: f"{row['Donor']}_{row['Tissue Origin']}_{row['Tissue Type']}_{row['Library Type']}_{row['Group ID']}",
+        axis=1)
+
+    project = study_titles.pop() if len(study_titles) == 1 else ""
 
     return cases, project
 
@@ -158,7 +191,7 @@ def makepdf(html, outputfile):
     htmldoc.write_pdf(outputfile, stylesheets=[CSS(css_file)], presentational_hints=True)
 
 
-def generate_report(input, output, use_stage):
+def generate_report(input, output, temp_dir):
     '''
     (str, str, bool) -> None
     
@@ -178,12 +211,12 @@ def generate_report(input, output, use_stage):
     with open(infile, 'r') as file:
         data = json.load(file)
 
-    fp_file = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz"
+    provenance = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz"
     workflow_ids = extract_workflow_ids(data)
-    base_db_path = "/scratch2/groups/gsi/staging/qcetl_v1/" if use_stage else "/scratch2/groups/gsi/production/qcetl_v1/"
-    cases_data, project = query_provenance_file(fp_file, workflow_ids)
+    header, records = get_fp_records(provenance, workflow_ids)
+    cases_data, project = parse_fp_records(header, records)
 
-    report = Report(workflow_ids, base_db_path, cases_data, project)
+    report = Report(cases_data, project)
     report_context = report.load_context()
 
     # Generate HTML content using Jinja2 templates
@@ -196,6 +229,28 @@ def generate_report(input, output, use_stage):
     makepdf(contents, outfile)
     print(f"Created report {outfile}")
 
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+
+
+def is_gzipped(file):
+    '''
+    (str) -> bool
+
+    Return True if file is gzipped
+
+    Parameters
+    ----------
+    - file (str): Path to file
+    '''
+    # open file in rb mode
+    infile = open(file, 'rb')
+    header = infile.readline()
+    infile.close()
+    if header.startswith(b'\x1f\x8b\x08'):
+        return True
+    else:
+        return False
 
 if __name__ == "__main__":
     # Create parser for command line args
@@ -217,15 +272,8 @@ if __name__ == "__main__":
         required=False,
         help="Name of output file. Default names pdf Analysis_Report.pdf"
     )
-    parser.add_argument(
-        '--stage',
-        '--staging',
-        action="store_true",
-        help="Use qcetl data from stage",
-    )
-
     args = parser.parse_args()
 
     print(f"Reading input from {args.infile}")
-    
-    generate_report(input=args.infile, output=args.outfile, use_stage=args.stage)
+    temp_dir = 'temp'
+    generate_report(input=args.infile, output=args.outfile, temp_dir=temp_dir)

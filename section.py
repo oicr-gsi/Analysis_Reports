@@ -3,6 +3,7 @@ from tables import (
     RSEMTable,
     DellyTable,
     Mutect2Table,
+    PurpleTable,
     StarFusionTable,
     WGCallReadyTable,
     WGLaneLevelTable,
@@ -19,13 +20,12 @@ class Section:
     tables: List[Any]  # tables of section
     name: str  # name of section, used as key in context for jinja2 templating
 
-    def load_context(self, workflow_ids, base_db_path, cases_data):
+    def load_context(self, cases_data):
         '''
         Returns a dict containing the context of the section, including its tables.
 
         Parameters:
-        - workflow_ids: List of workflow IDs extracted from the input data
-        - base_db_path: Path to the base directory for databases
+        - cases_data: DataFrame containing the all the information related to the Donors like Sample ID, Tissue Type, External ID, etc.
 
         Returns:
         - A dictionary with the section's context, including title, blurb, and tables
@@ -39,11 +39,14 @@ class Section:
 
         # For each table in the section, load its context
         for tcount, table in enumerate(self.tables):
-            table_context = table.load_context(workflow_ids, base_db_path, cases_data)  # Pass workflow_ids, cases_data and base_db_path to table
+            table_context = table.load_context(cases_data)  
             
             if table_context["data"]:
                 context["tables"][tcount] = table_context 
                 has_data = True
+
+                if 'plots' in table_context:
+                    context['tables'][tcount]['plots'] = table_context['plots']
 
         if not has_data:
             return None
@@ -61,8 +64,8 @@ class RawSeqDataSection(Section):
             WGLaneLevelTable(),
             WTLaneLevelTable(),
         ]
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
 
 #CallReadyAlignmentsSection class defines the section for call ready alignments
@@ -77,8 +80,8 @@ class CallReadyAlignmentsSection(Section):
             WGCallReadyTable(),
             WTCallReadyTable(),
         ]
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
 
 #CasesSection class defines the section for cases
@@ -93,8 +96,8 @@ class CasesSection(Section):
             CasesTable(),
         ]
 
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
 
 # DellySection class defines the section for delly workflow
@@ -110,8 +113,8 @@ class DellySection(Section):
             DellyTable(),
         ]
     
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
 
 # HeaderSection class defines the header of the report
@@ -156,8 +159,25 @@ class Mutect2Section(Section):
             Mutect2Table(),
         ]
     
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
+        return context
+
+# PurpleSection class defines the section for purple workflow
+class PurpleSection(Section):
+    def __init__(self):
+        self.title = "Purity/Ploidy Assessment"
+        self.blurb = '''
+        Summary metrics for purity and ploidy generated from the WG Tumour/Normal pairs.
+        Metrics are generated with purple.
+        '''
+        self.name = "purple"
+        self.tables = [
+            PurpleTable(),
+        ]
+    
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
 
 # RSEMSection class defines the section for RSEM workflow
@@ -174,8 +194,8 @@ class RSEMSection(Section):
             RSEMTable(),
         ]
     
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
 
 #StarFusionSection class defines the section for StarFusion
@@ -191,6 +211,6 @@ class StarFusionSection(Section):
             StarFusionTable(),
         ]
 
-    def load_context(self, workflow_ids, base_db_path, cases_data):
-        context = super().load_context(workflow_ids, base_db_path, cases_data)
+    def load_context(self, cases_data):
+        context = super().load_context(cases_data)
         return context
