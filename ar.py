@@ -31,7 +31,7 @@ class Report:
             RawSeqDataSection(),
             CallReadyAlignmentsSection(),
             Mutect2Section(),
-            #PurpleSection(),
+            PurpleSection(),
             DellySection(),
             RSEMSection(),
             StarFusionSection(),
