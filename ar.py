@@ -12,27 +12,28 @@ from weasyprint import CSS
 from section import ( 
     HeaderSection, 
     CasesSection,
-    DellySection, 
+    RawSeqDataSection,
+    CallReadyAlignmentsSection,
     Mutect2Section, 
+    DellySection, 
     PurpleSection,
     RSEMSection,
     StarFusionSection,
-    CallReadyAlignmentsSection,
-    RawSeqDataSection
 )
 
 # Report class outlines the structure and order or a report
 class Report:
-    def __init__(self, cases_data, project):
+    def __init__(self, cases_data, project, workflow_ids):
         self.cases_data = cases_data
+        self.workflow_ids = workflow_ids
         self.header = HeaderSection(project)  
         self.sections = [
             CasesSection(),
             RawSeqDataSection(),
             CallReadyAlignmentsSection(),
             Mutect2Section(),
-            PurpleSection(),
             DellySection(),
+            PurpleSection(),
             RSEMSection(),
             StarFusionSection(),
         ]
@@ -43,7 +44,7 @@ class Report:
             "sections": {}
         }
         for section in self.sections:
-            section_context = section.load_context(self.cases_data)
+            section_context = section.load_context(self.cases_data, self.workflow_ids)
             if section_context:
                 report_context["sections"][section.name] = section_context
 
@@ -216,7 +217,7 @@ def generate_report(input, output, temp_dir):
     header, records = get_fp_records(provenance, workflow_ids)
     cases_data, project = parse_fp_records(header, records)
 
-    report = Report(cases_data, project)
+    report = Report(cases_data, project, workflow_ids)
     report_context = report.load_context()
 
     # Generate HTML content using Jinja2 templates

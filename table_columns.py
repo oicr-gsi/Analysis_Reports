@@ -20,7 +20,54 @@ class CasesTableColumns:
     TissueOrigin = "Tissue Origin"
     TissuePreparation = "Tissue Preparation"
     ExternalID = "External ID"
-    
+
+class WGLaneLevelTableColumns:
+    Case = CommonColumns.Case
+    SampleID = CommonColumns.SampleID
+    Lane = "Lane"
+    CoverageDedup = "coverage deduplicated"
+    InsertSizeAvg = "insert size average"
+    MarkDupPctDup = "mark duplicates_PERCENT_DUPLICATION"
+    TotalClusters = "total clusters"
+    MappedReads = "mapped reads"
+    SampleType = "Sample Type"
+
+class WTLaneLevelTableColumns:
+    Case = CommonColumns.Case
+    SampleID = CommonColumns.SampleID
+    Lane = "Lane"
+    PctCodingBases = "PCT_CODING_BASES"
+    TotalClusters = "total clusters"
+    MappedReads = "mapped reads"
+    RRNAContamination = "rrna_contam"
+    SampleType = "Sample Type"
+
+class WGCallReadyTableColumns:
+    Case = CommonColumns.Case
+    SampleID = "SampleID"
+    CoverageDedup = "coverage deduplicated"
+    MarkDupPctDup = "mark duplicates_PERCENT_DUPLICATION"
+    TotalClusters = "total clusters"
+    MappedReads = "mapped reads"
+    SampleType = "Sample Type"
+
+class WTCallReadyTableColumns:
+    Case = CommonColumns.Case
+    SampleID = "SampleID"
+    PctCodingBases = "PCT_CODING_BASES"
+    TotalClusters = "total clusters"
+    MappedReads = "mapped reads"
+    RRNAContamination = "rrna_contam"
+    SampleType = "Sample Type"
+
+class Mutect2TableColumns:
+    Case = CommonColumns.Case
+    SampleID = "SampleID"
+    NumCalls = "num_calls"
+    NumPASS = "num_PASS"
+    NumSNPs = "num_SNPs"
+    NumIndels = "num_indels"
+    TITVRatio = "titv_ratio"
 
 class DellyTableColumns:
     Case = CommonColumns.Case
@@ -32,15 +79,6 @@ class DellyTableColumns:
     NumDUP = "num_DUP"
     NumINS = "num_INS"
     NumINV = "num_INV"
-
-class Mutect2TableColumns:
-    Case = CommonColumns.Case
-    SampleID = "SampleID"
-    NumCalls = "num_calls"
-    NumPASS = "num_PASS"
-    NumSNPs = "num_SNPs"
-    NumIndels = "num_indels"
-    TITVRatio = "titv_ratio"
 
 class PurpleTableColumns:
     Case = CommonColumns.Case
@@ -68,43 +106,3 @@ class StarFusionTableColumns:
     Case = CommonColumns.Case
     SampleID = "SampleID"
     NumRecords = "num_records"
-    
-class WGCallReadyTableColumns:
-    Case = CommonColumns.Case
-    SampleID = "SampleID"
-    CoverageDedup = "coverage deduplicated"
-    MarkDupPctDup = "mark duplicates_PERCENT_DUPLICATION"
-    TotalClusters = "total clusters"
-    MappedReads = "mapped reads"
-    SampleType = "Sample Type"
-
-class WGLaneLevelTableColumns:
-    Case = WGCallReadyTableColumns.Case
-    SampleID = CommonColumns.SampleID
-    Lane = "Lane"
-    CoverageDedup = WGCallReadyTableColumns.CoverageDedup
-    InsertSizeAvg = "insert size average"
-    MarkDupPctDup = WGCallReadyTableColumns.MarkDupPctDup
-    TotalClusters = WGCallReadyTableColumns.TotalClusters
-    MappedReads = WGCallReadyTableColumns.MappedReads
-    SampleType = WGCallReadyTableColumns.SampleType
-
-class WTCallReadyTableColumns:
-    Case = CommonColumns.Case
-    SampleID = "SampleID"
-    PctCodingBases = "PCT_CODING_BASES"
-    TotalClusters = "total clusters"
-    MappedReads = "mapped reads"
-    RRNAContamination = "rrna_contam"
-    SampleType = "Sample Type"
-
-class WTLaneLevelTableColumns:
-    Case = CommonColumns.Case
-    SampleID = CommonColumns.SampleID
-    Lane = "Lane"
-    PctCodingBases = WTCallReadyTableColumns.PctCodingBases
-    TotalClusters = WTCallReadyTableColumns.TotalClusters
-    MappedReads = WTCallReadyTableColumns.MappedReads
-    RRNAContamination = WTCallReadyTableColumns.RRNAContamination
-    SampleType = WTCallReadyTableColumns.SampleType
-

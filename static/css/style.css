@@ -6,10 +6,16 @@
   margin-bottom: 30px;
   font-family: Arial, Helvetica, sans-serif;
   border-collapse: collapse;
-  width: 95%;
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  word-wrap: break-word;
   }
   .case_table td, .case_table th {
   padding: 8px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
   }
 
   .case_table th {
@@ -54,8 +60,6 @@ h3 {color: black;
   font-size: 14px
 }
 
-
-
 li {
  font-family: Arial, Helvetica, sans-serif;
  text-align: left;
@@ -63,7 +67,6 @@ li {
  padding-left:0px;
  list-style-position: outside;
 }
-
 
 p {
  font-family: Arial, Helvetica, sans-serif;
@@ -74,7 +77,7 @@ p {
 }
 
 img {
-width: 85%;
+width: 90%;
 }
 
 
@@ -84,23 +87,38 @@ width: 85%;
   margin-top: 60px;
   font-family: Arial, Helvetica, sans-serif;
   border-collapse: collapse;
-  width: 95%;
-  font-size:12px;
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  word-wrap: break-word;
+  font-size:10px;
 }
-#project_table td, #project_table th {
-  border: 1px solid black;
+
+#project_table th {
+  border: 1px solid #ddd;
+  background-color: #6cbc3d;
+  color: white;
   padding: 8px;
   text-align: center;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
-#project_table tr {
-  border: 1px black;
-}
-/* #project_table th {
-  padding-top: 12px;
-  padding-bottom: 12px;
-  text-align: center;
-} */
 
+#project_table td {
+  border: 1px solid #ddd;
+  background-color: white;
+  color: black;
+  text-align: center;
+  padding: 8px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+#project_table tr {
+  border: 1px solid #ddd;
+}
 
 .info_table {
 margin-left: auto;
@@ -109,11 +127,17 @@ margin-top: 30px;
 margin-bottom: 30px;
 font-family: Arial, Helvetica, sans-serif;
 border-collapse: collapse;
-width: 95%;
+width: 100%;
+max-width: 100%;
+table-layout: fixed;
+word-wrap: break-word;
 }
 .info_table td, .info_table th {
 /* border: 1px solid #ddd; */
 padding: 8px;
+word-wrap: break-word;
+overflow-wrap: break-word;
+white-space: normal;
 }
 .info_table tr:nth-child(even){background-color: #f2f2f2;}
 .info_table th {
@@ -126,7 +150,6 @@ border-bottom: 1px solid black;
 color: black;
 }
 
-
 #user_table {
 margin-left: auto;
 margin-right: auto;
@@ -134,13 +157,19 @@ margin-top: 30px;
 margin-bottom: 30px;
 font-family: Arial, Helvetica, sans-serif;
 border-collapse: collapse;
-width: 95%;
+width: 100%;
+max-width: 100%;
+table-layout: fixed;
+word-wrap: break-word;
 position: absolute;
 bottom:0px;
 }
 #user_table td, #user_table th {
 border: 1px solid #ddd;
 padding: 8px;
+word-wrap: break-word;
+overflow-wrap: break-word;
+white-space: normal;
 }
 #user_table th {
 padding-top: 12px;
@@ -152,39 +181,63 @@ color: black;
 }
 
 .toc-row {
+  display: flex;
+  align-items: center;
   font-family: Arial, Helvetica, sans-serif;
   font-size: 12px;
-  margin-left: 50px;
-  margin-right: 50px;
+  margin: 0 50px;
   padding-bottom: 5px;
 }
-.toc-row a::after {
-  content: leader('.') target-counter(attr(href), page, decimal);
-}
 
-.toc-row a:link {
+.toc-row a {
+  flex: 0 0 auto; 
   color: black;
   text-decoration: none;
+  white-space: nowrap;
+  position: relative;
+  margin-right: 5px;
 }
 
+.toc-row .toc-fill {
+  flex: 1 1 auto;
+  border-bottom: 1px dotted black;
+  height: 1px;
+  margin: 0 5px;
+}
+
+
+.toc-page {
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-left: 10px;
+}
+
+.toc-page::before {
+  content: leader('.') target-counter(attr(data-target), page);
+  white-space: nowrap;
+}
+
+.toc-row a:link,
 .toc-row a:visited {
   color: black;
+  text-decoration: none;
 }
 
 .return_to_toc {
   font-size: 10px;
 }
 
-.return_to_toc a:visited{
+.return_to_toc a:visited {
   color: black;
   text-decoration: none;
 }
-.return_to_toc a:link{
+
+.return_to_toc a:link {
   color: black;
-  text-decoration: none;;
+  text-decoration: none;
 }
 
-.title_toc_wrap{
+.title_toc_wrap {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
@@ -198,20 +251,19 @@ div.case_row>div:nth-of-type(odd) {
   margin: 10mm;
   /* size: landscape; */
 }
-/* @page:first{
-  size: portrait;
-} */
+
 @page {
   @bottom-right{
       content: "Page " counter(page) " of " counter(pages);
+      font-size: 10px;
   }
 }
 
-@page horizontal_page {
-  size: landscape;
+@page :vertical_page {
+  size: portrait;
 }
-.landscape {
-  page: horizontal_page;
+.portrait {
+  page: vertical_page;
 }
 
 /* @page horizontal_page {

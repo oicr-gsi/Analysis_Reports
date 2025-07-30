@@ -9,15 +9,15 @@ from datetime import date
 from table_columns import (
     CommonColumns,
     CasesTableColumns,
+    WGLaneLevelTableColumns,
+    WTLaneLevelTableColumns,
+    WGCallReadyTableColumns,
+    WTCallReadyTableColumns,
+    Mutect2TableColumns,
     DellyTableColumns,
     PurpleTableColumns,
-    Mutect2TableColumns,
     RSEMTableColumns,
-    StarFusionTableColumns,
-    WGCallReadyTableColumns,
-    WGLaneLevelTableColumns,
-    WTCallReadyTableColumns,
-    WTLaneLevelTableColumns,
+    StarFusionTableColumns, 
 )
 from plot import(
     Plot,
@@ -36,12 +36,12 @@ class Table:
     glossary: dict          # Dict[name of column, definition]
     pipeline_step: str
     
-    def get_data(self, cache, cases_data):
+    def get_data(self, cache, cases_data, workflow_ids):
         cache = cache.copy()
         cache['SWID'] = cache[self.col.WorkflowRunSWID].str.extract(r'([^/]+$)')
 
         cases_data.rename(columns={'Workflow Run ID': 'SWID'}, inplace=True)
-        swid = cases_data['SWID'].unique()
+        swid = pd.Series(workflow_ids).unique()
         data = cache[cache['SWID'].isin(swid)].copy()
 
         for col in data.select_dtypes(include='object').columns:
@@ -51,6 +51,7 @@ class Table:
         merge_col = ['SWID', 'Tissue Type']
         data = data.merge(cases_data[['SWID', 'Tissue Type', 'SampleID']], on=merge_col, how='left')
         data = data[[col.strip('"') for col in self.columns.values() if col.strip('"') in data.columns]].copy()
+        data = data.rename(columns=lambda x: x.capitalize() if x.lower() == 'donor' else x)
         col = ['Donor', 'SampleID'] + [col for col in data.columns if col not in ['Donor', 'SampleID']]
         data = data[col].drop_duplicates()
         data[data.select_dtypes(include='float').columns] = data.select_dtypes(include='float').round(2)
@@ -110,7 +111,7 @@ class Table:
                 
             return plots
     
-    def get_context(self, cases_data):
+    def get_context(self, cases_data, workflow_ids):
         return {
             "title": self.title,
             "blurb": self.blurb,
@@ -221,11 +222,11 @@ class CasesTable(Table):
         
         return cases_data
 
-    def load_context(self, cases_data):
+    def load_context(self, cases_data, workflow_ids):
         '''
         Load the context for the Cases Table. 
         '''
-        context = self.get_context(cases_data)
+        context = self.get_context(cases_data, workflow_ids)
         data = self.case_data(cases_data)
 
         if data.empty:
@@ -233,403 +234,6 @@ class CasesTable(Table):
         else:
             data = data.sort_values(by=['Donor', 'Library Type'])  
             context["data"] = data.to_dict(orient='records')
-
-        return context
-
-# DellyTable class defines a table for the delly workflow
-class DellyTable(Table):
-    def __init__(self):
-        self.title = "Genomic Structural Variants"
-        self.headings = {
-            DellyTableColumns.Case: "Donor",
-            DellyTableColumns.SampleID: "SampleID",
-            DellyTableColumns.NumCalls: "SV Calls",
-            DellyTableColumns.NumPASS: "SV PASS Calls",
-            DellyTableColumns.NumBND: "Translocations",
-            DellyTableColumns.NumDEL: "Deletions",
-            DellyTableColumns.NumDUP: "Duplications",
-            DellyTableColumns.NumINS: "Insertions",
-            DellyTableColumns.NumINV: "Inversions",
-        }
-        self.columns = {
-            DellyTableColumns.Case: "\"Donor\"",
-            DellyTableColumns.SampleID: "\"SampleID\"",
-            DellyTableColumns.NumCalls: "\"num_calls\"",
-            DellyTableColumns.NumPASS: "\"num_PASS\"",
-            DellyTableColumns.NumBND: "\"num_BND\"",
-            DellyTableColumns.NumDEL: "\"num_DEL\"",
-            DellyTableColumns.NumDUP: "\"num_DUP\"",
-            DellyTableColumns.NumINS: "\"num_INS\"",
-            DellyTableColumns.NumINV: "\"num_INV\"",
-        }
-        self.pipeline_step = "calls.structuralvariants"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
-        self.col = gsiqcetl.column.AnalysisDellyColumn
-        self.plots = {
-            DellyTableColumns.NumPASS: Plot(
-                title="SV PASS Calls",
-                x_axis="SampleID",
-                y_axis="SV PASS Calls"
-            ),
-        }
-        self.glossary = {
-            DellyTableColumns.NumCalls: "The number of somatic structural variant calls identified by delly",
-            DellyTableColumns.NumPASS: "The number of structural variant calls marked as PASS",
-            DellyTableColumns.NumBND: "The number of PASS translocation calls",
-            DellyTableColumns.NumDEL: "The number of PASS deletion calls",
-            DellyTableColumns.NumDUP: "The number of PASS duplication calls",
-            DellyTableColumns.NumINS: "The number of PASS insertions calls",
-            DellyTableColumns.NumINV: "The number of PASS inversions calls",
-        }
-    
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        delly = load_cache(etl_caches, 'analysis_delly', 'analysis_delly',
-            gsiqcetl.column.AnalysisDellyColumn.MergedPineryLimsID, True)
-
-        data = self.get_data(delly, cases_data) 
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_plot_data(data)
-
-        return context
-
-# PurpleTable class defines a table for the purple workflow
-class PurpleTable(Table):
-    def __init__(self):
-        self.title = "Purity/Ploidy Assessment"
-        self.headings = {
-            PurpleTableColumns.Case: "Donor",
-            PurpleTableColumns.SampleID: "SampleID",
-            PurpleTableColumns.Purity: "Purity",
-            PurpleTableColumns.Ploidy: "Ploidy",
-            PurpleTableColumns.Pga: "PGA",
-        }
-        self.columns = {
-            PurpleTableColumns.Case: "\"Donor\"",
-            PurpleTableColumns.SampleID: "\"SampleID\"",
-            PurpleTableColumns.Purity: "\"purity\"",
-            PurpleTableColumns.Ploidy: "\"ploidy\"",
-            PurpleTableColumns.Pga: "\"PGA\"",
-        }
-        self.pipeline_step = "calls.purityploidyestimates"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1']
-        self.col = gsiqcetl.column.AnalysisPurpleColumn
-        self.plots = {
-            PurpleTableColumns.Purity: Plot(
-                title="Purity",
-                x_axis="SampleID",
-                y_axis="Purity"
-            ),
-            PurpleTableColumns.Ploidy: Plot(
-                title="Ploidy",
-                x_axis="SampleID",
-                y_axis="Ploidy"
-            ),
-            PurpleTableColumns.Pga: Plot(
-                title="Percent Genome Altered",
-                x_axis="SampleID",
-                y_axis="PGA"
-            ),
-        }
-        self.glossary = {
-            PurpleTableColumns.Purity: "Purity of tumor in the sample",
-            PurpleTableColumns.Ploidy: "Average ploidy of the tumor sample after adjusting for purity",
-            PurpleTableColumns.Pga: "Percent of the genome that is altered in the tumor sample",
-        }
-    
-    def load_context(self, cases_data):
-        print(self.gsiqcetl_dirs)
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        purple = load_cache(etl_caches, 'analysis_purple', 'analysis_purple',
-            gsiqcetl.column.AnalysisPurpleColumn.MergedPineryLimsID, True)
-
-        data = self.get_data(purple, cases_data) 
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_plot_data(data)
-
-        return context
-
-# Mutect2Table class defines a table for the Mutect2 workflow
-class Mutect2Table(Table):
-    def __init__(self):
-        self.title = "Somatic Mutations"
-        self.headings = {
-            Mutect2TableColumns.Case: "Donor",
-            Mutect2TableColumns.SampleID: "SampleID",
-            Mutect2TableColumns.NumCalls: "Calls",
-            Mutect2TableColumns.NumPASS: "PASS Calls",
-            Mutect2TableColumns.NumSNPs: "SNPs",
-            Mutect2TableColumns.NumIndels: "Indels",
-            Mutect2TableColumns.TITVRatio: "Ti/Tv Ratio",
-        }
-        self.columns = {
-            Mutect2TableColumns.Case: "\"Donor\"",
-            Mutect2TableColumns.SampleID: "\"SampleID\"",
-            Mutect2TableColumns.NumCalls: "\"num_calls\"",
-            Mutect2TableColumns.NumPASS: "\"num_PASS\"",
-            Mutect2TableColumns.NumSNPs: "\"num_SNPs\"",
-            Mutect2TableColumns.NumIndels: "\"num_indels\"",
-            Mutect2TableColumns.TITVRatio: "\"titv_ratio\"",
-        }
-        self.pipeline_step = "calls.mutations"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
-        self.col = gsiqcetl.column.AnalysisMutect2Column
-        self.plots = {
-            Mutect2TableColumns.NumPASS: Plot(
-                title="Mutation Calls",
-                x_axis="SampleID",
-                y_axis="PASS Calls"
-            ),
-            Mutect2TableColumns.TITVRatio: Plot(
-                title="Ti/Tv",
-                x_axis="SampleID",
-                y_axis="Ti/Tv Ratio",
-                lo=0,
-            ),
-        }
-        self.glossary = {
-            Mutect2TableColumns.NumCalls: "Total number of calls identified by Mutect2",
-            Mutect2TableColumns.NumPASS: "Total number of PASS calls",
-            Mutect2TableColumns.NumSNPs: "Number of SNP calls",
-            Mutect2TableColumns.NumIndels: "Number of insertion/deletion calls",
-            Mutect2TableColumns.TITVRatio: "Ratio of transition vs transversion mutations",
-        }
-
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        mutect2 = load_cache(etl_caches, 'analysis_mutect2', 'analysis_mutect2',
-            gsiqcetl.column.AnalysisMutect2Column.MergedPineryLimsID, True)
-
-        data = self.get_data(mutect2, cases_data) 
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_plot_data(data)
-
-        return context
-
-# RSEMTable class defines a table for the rsem workflow
-class RSEMTable(Table):
-    def __init__(self):
-        self.title = "Gene Expression"
-        self.headings = {
-            RSEMTableColumns.Case: "Donor",
-            RSEMTableColumns.SampleID: "SampleID",
-            RSEMTableColumns.Total: "Total Reads",
-            RSEMTableColumns.PctNonZero: "Percent Non-zero",
-            RSEMTableColumns.Q0_05: "0.05 Quantile",
-            RSEMTableColumns.Q0_5: "0.5 Quantile",
-            RSEMTableColumns.Q0_95: "0.95 Quantile",
-        }
-        self.columns = {
-            RSEMTableColumns.Case: "\"Donor\"",
-            RSEMTableColumns.SampleID: "\"SampleID\"",
-            RSEMTableColumns.Total: "\"total\"",
-            RSEMTableColumns.PctNonZero: "\"pct_non_zero\"",
-            RSEMTableColumns.Q0_05: "\"Q0.05\"",
-            RSEMTableColumns.Q0_5: "\"Q0.5\"",
-            RSEMTableColumns.Q0_95: "\"Q0.95\"",
-        }
-        self.pipeline_step = "calls.expression"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
-        self.col = gsiqcetl.column.AnalysisRSEMColumn
-        self.plots = {
-            RSEMTableColumns.PctNonZero: Plot(
-                title="Percent Expressed",
-                x_axis="SampleID",
-                y_axis="Percent Non-zero",
-                hi=100,
-                lo=0,
-            ),
-            RSEMTableColumns.Q0_5: Plot(
-                title="Median TPM",
-                x_axis="SampleID",
-                y_axis="0.5 Quantile",
-            ),
-        }
-        self.glossary = {
-            RSEMTableColumns.Total: "Total number of reads assigned to a gene",
-            RSEMTableColumns.PctNonZero: "Percentage of non-zero read counts",
-            RSEMTableColumns.Q0_05: "Expression at the 0.05 quantile",
-            RSEMTableColumns.Q0_5: "Expression at the 0.5 quantile",
-            RSEMTableColumns.Q0_95: "Expression at the 0.95 quantile",
-        }
-    
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        rsem = load_cache(etl_caches, 'analysis_rsem', 'analysis_rsem',
-            gsiqcetl.column.AnalysisRSEMColumn.MergedPineryLimsID, True)
-
-        data = self.get_data(rsem, cases_data) 
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WT_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_plot_data(data)
-
-        return context
-
-# StarFusionTable class defines a table for the star fusion workflow
-class StarFusionTable(Table):
-    def __init__(self):
-        self.title = "Gene Fusions"
-        self.headings = {
-            StarFusionTableColumns.Case: "Donor",
-            StarFusionTableColumns.SampleID: "SampleID",
-            StarFusionTableColumns.NumRecords: "Fusion Calls",
-        }
-        self.columns = {
-            StarFusionTableColumns.Case: "\"Donor\"",
-            StarFusionTableColumns.SampleID: "\"SampleID\"",
-            StarFusionTableColumns.NumRecords: "\"num_records\"",
-        }
-        self.pipeline_step = "calls.fusions"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
-        self.col = gsiqcetl.column.AnalysisStarFusionColumn
-        self.plots = {
-            StarFusionTableColumns.NumRecords: Plot(
-                title="Fusion Calls",
-                x_axis="SampleID",
-                y_axis="Fusion Calls"
-            )
-        }
-        self.glossary = {
-            StarFusionTableColumns.NumRecords: "Number of gene fusions identified by StarFusion",
-        }  
-    
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        starfusion = load_cache(etl_caches, 'analysis_starfusion', 'analysis_starfusion',
-            gsiqcetl.column.AnalysisStarFusionColumn.MergedPineryLimsID, True)
-
-        data = self.get_data(starfusion, cases_data) 
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WT_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_plot_data(data)
-
-        return context
-
-#WGCallReadyTable class defines a table for the bamqc4merged workflow
-class WGCallReadyTable(Table):
-    def __init__(self):
-        self.title = "Whole Genome Libraries, tumour and matched normal"
-        self.headings = {
-            WGCallReadyTableColumns.Case: "Donor",
-            WGCallReadyTableColumns.SampleID: "SampleID",
-            WGCallReadyTableColumns.CoverageDedup: "Coverage Depth",
-            WGCallReadyTableColumns.MarkDupPctDup: "Duplication (%)",
-            WGCallReadyTableColumns.TotalClusters: "Read Pairs",
-            WGCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
-            WGCallReadyTableColumns.SampleType: "Sample Type",
-        }
-        self.columns = {
-            WGCallReadyTableColumns.Case: "\"Donor\"",
-            WGCallReadyTableColumns.SampleID: "\"SampleID\"",
-            WGCallReadyTableColumns.CoverageDedup: "\"coverage deduplicated\"",
-            WGCallReadyTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
-            WGCallReadyTableColumns.TotalClusters: "\"total clusters\"",
-            WGCallReadyTableColumns.MappedReads: "\"MappedReads\"",
-            WGCallReadyTableColumns.SampleType: "\"Sample Type\"",
-        }
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
-        self.pipeline_step = "alignments_WG.CallReady"
-        self.plots = {
-            WGCallReadyTableColumns.CoverageDedup: Plot(
-                "Coverage Depth",
-                "SampleID",
-                "Coverage Depth",
-            ),
-            WGCallReadyTableColumns.MarkDupPctDup: Plot(
-                "Duplication",
-                "SampleID",
-                "Duplication (%)",
-            ),
-            WGCallReadyTableColumns.TotalClusters: Plot(
-                "Read Pairs",
-                "SampleID",
-                "Read Pairs",
-            ),
-            WGCallReadyTableColumns.MappedReads: Plot(
-                "Mapped Reads",
-                "SampleID",
-                "Mapped Reads (%)",
-            )
-        }
-        self.glossary = {
-            WGCallReadyTableColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
-            WGCallReadyTableColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
-            WGCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
-            WGCallReadyTableColumns.MappedReads: "Percent of reads mapping to the genomic reference",
-        }
-    
-    def get_data(self, bamqc4merged, cases_data):
-        def derive(data):
-            data['MappedReads'] = (
-                    (1 - data["unmapped reads meta"].astype(float) /
-                    data["total input reads meta"].astype(float)) * 100
-                    ).round(2)
-            return data
-        
-        return get_seq_metrics(
-            cache=bamqc4merged,
-            cases_data=cases_data,
-            column=self.columns,
-            derived_col=derive,
-            join_col='Sample Name',
-            rename_col=self.headings
-        )
-    
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        bamqc4merged_columns = gsiqcetl.column.BamQc4MergedColumn
-        bamqc4merged = load_cache(etl_caches, 'bamqc4merged', 'bamqc4merged',
-            bamqc4merged_columns.Donor, True)
-
-        data = self.get_data(bamqc4merged, cases_data) 
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WG_')]
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_Seqplot_data(data)
 
         return context
 
@@ -719,8 +323,8 @@ class WGLaneLevelTable(Table):
             rename_col=self.headings
         )
 
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
         etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
         bamqc4_columns = gsiqcetl.column.BamQc4Column
         bamqc4 = load_cache(etl_caches, 'bamqc4', 'bamqc4', bamqc4_columns.Barcodes) 
@@ -732,101 +336,6 @@ class WGLaneLevelTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WG_')]
-            data = data.sort_values(by=['Donor', 'SampleID'])
-            context["data"] = data.to_dict(orient='records')
-            context["plots"] = self.add_Seqplot_data(data)
-
-        return context
-
-
-#WTCallReadyTable class defines a table for the rnaseqqc2merged workflow
-class WTCallReadyTable(Table):
-    def __init__(self):
-        self.title = "Whole Transcriptome Libraries, tumour only"
-        self.headings = {
-            WTCallReadyTableColumns.Case: "Donor",
-            WTCallReadyTableColumns.SampleID: "SampleID",
-            WTCallReadyTableColumns.PctCodingBases: "Percent Coding (%)",
-            WTCallReadyTableColumns.TotalClusters: "Read Pairs",
-            WTCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
-            WTCallReadyTableColumns.RRNAContamination: "rRNA Contamination (%)",
-            WTCallReadyTableColumns.SampleType: "Sample Type",
-        }
-        self.columns = {
-            WTCallReadyTableColumns.Case: "\"Donor\"",
-            WTCallReadyTableColumns.SampleID: "\"SampleID\"",
-            WTCallReadyTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
-            WTCallReadyTableColumns.TotalClusters: "\"total clusters\"",
-            WTCallReadyTableColumns.MappedReads: "\"MappedReads\"",
-            WTCallReadyTableColumns.RRNAContamination: "\"rrnacontaminationpercent\"",
-            WTCallReadyTableColumns.SampleType: "\"Sample Type\"",
-        }
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
-        self.pipeline_step = "alignments_WT.callready"
-        self.plots = {
-            WTCallReadyTableColumns.PctCodingBases: Plot(
-                title="Percent Coding",
-                x_axis="SampleID",
-                y_axis="Percent Coding (%)",
-            ),
-            WTCallReadyTableColumns.TotalClusters: Plot(
-                title="Read Pairs",
-                x_axis="SampleID",
-                y_axis="Read Pairs",
-            ),
-            WTCallReadyTableColumns.MappedReads: Plot(
-                title="Mapped Reads",
-                x_axis="SampleID",
-                y_axis="Mapped Reads (%)",
-            ),
-            WTCallReadyTableColumns.RRNAContamination: Plot(
-                title="rRNA Contamination",
-                x_axis="SampleID",
-                y_axis="rRNA Contamination (%)",
-            ),
-        }
-        self.glossary = {
-            WTCallReadyTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
-            WTCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
-            WTCallReadyTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
-            WTCallReadyTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
-        }
-    def get_data(self, rnaseqqc2merged, cases_data):
-        def derive(data):
-            data['MappedReads'] = (
-                    (1 - data["unmapped reads"].astype(float) /
-                    data["total reads"].astype(float)) * 100
-                    ).round(2)
-            data['rrnacontaminationpercent'] = ((
-                    data["rrna contamination properly paired"].astype(float) /
-                    data["rrna contamination in total (QC-passed reads + QC-failed reads)"].astype(float)
-                ) * 100).round(2)
-            data['PCT_CODING_BASES'] = ((data["PCT_CODING_BASES"].astype(float)) * 100).round(2)
-            return data
-        
-        return get_seq_metrics(
-            cache=rnaseqqc2merged,
-            cases_data=cases_data,
-            column=self.columns,
-            derived_col=derive,
-            join_col='LIMS ID',
-            rename_col=self.headings
-        )
-
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
-        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
-        rnaseqqc2merged_columns = gsiqcetl.column.RnaSeqQc2MergedColumn
-        rnaseqqc2merged = load_cache(etl_caches, 'rnaseqqc2merged', 'rnaseqqc2merged',
-            rnaseqqc2merged_columns.Donor, True)
-
-        data = self.get_data(rnaseqqc2merged, cases_data)
-        
-        if data.empty:
-            context["data"] = []
-            context["plots"] = {}
-        else:  
-            data = data[data['SampleID'].str.contains('_WT_')]
             data = data.sort_values(by=['Donor', 'SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_Seqplot_data(data)
@@ -917,8 +426,8 @@ class WTLaneLevelTable(Table):
             rename_col=self.headings
         )
 
-    def load_context(self, cases_data):
-        context = self.get_context(cases_data)
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
         etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
         rnaseqqc2_columns = gsiqcetl.column.RnaSeqQc2Column
         rnaseqqc2 = load_cache(etl_caches, 'rnaseqqc2', 'rnaseqqc2',
@@ -934,6 +443,496 @@ class WTLaneLevelTable(Table):
             data = data.sort_values(by=['Donor', 'SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_Seqplot_data(data)
+
+        return context
+
+#WGCallReadyTable class defines a table for the bamqc4merged workflow
+class WGCallReadyTable(Table):
+    def __init__(self):
+        self.title = "Whole Genome Libraries, tumour and matched normal"
+        self.headings = {
+            WGCallReadyTableColumns.Case: "Donor",
+            WGCallReadyTableColumns.SampleID: "SampleID",
+            WGCallReadyTableColumns.CoverageDedup: "Coverage Depth",
+            WGCallReadyTableColumns.MarkDupPctDup: "Duplication (%)",
+            WGCallReadyTableColumns.TotalClusters: "Read Pairs",
+            WGCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
+            WGCallReadyTableColumns.SampleType: "Sample Type",
+        }
+        self.columns = {
+            WGCallReadyTableColumns.Case: "\"Donor\"",
+            WGCallReadyTableColumns.SampleID: "\"SampleID\"",
+            WGCallReadyTableColumns.CoverageDedup: "\"coverage deduplicated\"",
+            WGCallReadyTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
+            WGCallReadyTableColumns.TotalClusters: "\"total clusters\"",
+            WGCallReadyTableColumns.MappedReads: "\"MappedReads\"",
+            WGCallReadyTableColumns.SampleType: "\"Sample Type\"",
+        }
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.pipeline_step = "alignments_WG.CallReady"
+        self.plots = {
+            WGCallReadyTableColumns.CoverageDedup: Plot(
+                "Coverage Depth",
+                "SampleID",
+                "Coverage Depth",
+            ),
+            WGCallReadyTableColumns.MarkDupPctDup: Plot(
+                "Duplication",
+                "SampleID",
+                "Duplication (%)",
+            ),
+            WGCallReadyTableColumns.TotalClusters: Plot(
+                "Read Pairs",
+                "SampleID",
+                "Read Pairs",
+            ),
+            WGCallReadyTableColumns.MappedReads: Plot(
+                "Mapped Reads",
+                "SampleID",
+                "Mapped Reads (%)",
+            )
+        }
+        self.glossary = {
+            WGCallReadyTableColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
+            WGCallReadyTableColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
+            WGCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
+            WGCallReadyTableColumns.MappedReads: "Percent of reads mapping to the genomic reference",
+        }
+    
+    def get_data(self, bamqc4merged, cases_data):
+        def derive(data):
+            data['MappedReads'] = (
+                    (1 - data["unmapped reads meta"].astype(float) /
+                    data["total input reads meta"].astype(float)) * 100
+                    ).round(2)
+            return data
+        
+        return get_seq_metrics(
+            cache=bamqc4merged,
+            cases_data=cases_data,
+            column=self.columns,
+            derived_col=derive,
+            join_col='Sample Name',
+            rename_col=self.headings
+        )
+    
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        bamqc4merged_columns = gsiqcetl.column.BamQc4MergedColumn
+        bamqc4merged = load_cache(etl_caches, 'bamqc4merged', 'bamqc4merged',
+            bamqc4merged_columns.Donor, True)
+
+        data = self.get_data(bamqc4merged, cases_data) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WG_')]
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_Seqplot_data(data)
+
+        return context
+
+#WTCallReadyTable class defines a table for the rnaseqqc2merged workflow
+class WTCallReadyTable(Table):
+    def __init__(self):
+        self.title = "Whole Transcriptome Libraries, tumour only"
+        self.headings = {
+            WTCallReadyTableColumns.Case: "Donor",
+            WTCallReadyTableColumns.SampleID: "SampleID",
+            WTCallReadyTableColumns.PctCodingBases: "Percent Coding (%)",
+            WTCallReadyTableColumns.TotalClusters: "Read Pairs",
+            WTCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
+            WTCallReadyTableColumns.RRNAContamination: "rRNA Contamination (%)",
+            WTCallReadyTableColumns.SampleType: "Sample Type",
+        }
+        self.columns = {
+            WTCallReadyTableColumns.Case: "\"Donor\"",
+            WTCallReadyTableColumns.SampleID: "\"SampleID\"",
+            WTCallReadyTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
+            WTCallReadyTableColumns.TotalClusters: "\"total clusters\"",
+            WTCallReadyTableColumns.MappedReads: "\"MappedReads\"",
+            WTCallReadyTableColumns.RRNAContamination: "\"rrnacontaminationpercent\"",
+            WTCallReadyTableColumns.SampleType: "\"Sample Type\"",
+        }
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.pipeline_step = "alignments_WT.callready"
+        self.plots = {
+            WTCallReadyTableColumns.PctCodingBases: Plot(
+                title="Percent Coding",
+                x_axis="SampleID",
+                y_axis="Percent Coding (%)",
+            ),
+            WTCallReadyTableColumns.TotalClusters: Plot(
+                title="Read Pairs",
+                x_axis="SampleID",
+                y_axis="Read Pairs",
+            ),
+            WTCallReadyTableColumns.MappedReads: Plot(
+                title="Mapped Reads",
+                x_axis="SampleID",
+                y_axis="Mapped Reads (%)",
+            ),
+            WTCallReadyTableColumns.RRNAContamination: Plot(
+                title="rRNA Contamination",
+                x_axis="SampleID",
+                y_axis="rRNA Contamination (%)",
+            ),
+        }
+        self.glossary = {
+            WTCallReadyTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
+            WTCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
+            WTCallReadyTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
+            WTCallReadyTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
+        }
+    def get_data(self, rnaseqqc2merged, cases_data):
+        def derive(data):
+            data['MappedReads'] = (
+                    (1 - data["unmapped reads"].astype(float) /
+                    data["total reads"].astype(float)) * 100
+                    ).round(2)
+            data['rrnacontaminationpercent'] = ((
+                    data["rrna contamination properly paired"].astype(float) /
+                    data["rrna contamination in total (QC-passed reads + QC-failed reads)"].astype(float)
+                ) * 100).round(2)
+            data['PCT_CODING_BASES'] = ((data["PCT_CODING_BASES"].astype(float)) * 100).round(2)
+            return data
+        
+        return get_seq_metrics(
+            cache=rnaseqqc2merged,
+            cases_data=cases_data,
+            column=self.columns,
+            derived_col=derive,
+            join_col='Donor',
+            rename_col=self.headings
+        )
+
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        rnaseqqc2merged_columns = gsiqcetl.column.RnaSeqQc2MergedColumn
+        rnaseqqc2merged = load_cache(etl_caches, 'rnaseqqc2merged', 'rnaseqqc2merged',
+            rnaseqqc2merged_columns.Donor, True)
+
+        data = self.get_data(rnaseqqc2merged, cases_data)
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WT_')]
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_Seqplot_data(data)
+
+        return context
+
+# Mutect2Table class defines a table for the Mutect2 workflow
+class Mutect2Table(Table):
+    def __init__(self):
+        self.title = "Somatic Mutations"
+        self.headings = {
+            Mutect2TableColumns.Case: "Donor",
+            Mutect2TableColumns.SampleID: "SampleID",
+            Mutect2TableColumns.NumCalls: "Calls",
+            Mutect2TableColumns.NumPASS: "PASS Calls",
+            Mutect2TableColumns.NumSNPs: "SNPs",
+            Mutect2TableColumns.NumIndels: "Indels",
+            Mutect2TableColumns.TITVRatio: "Ti/Tv Ratio",
+        }
+        self.columns = {
+            Mutect2TableColumns.Case: "\"Donor\"",
+            Mutect2TableColumns.SampleID: "\"SampleID\"",
+            Mutect2TableColumns.NumCalls: "\"num_calls\"",
+            Mutect2TableColumns.NumPASS: "\"num_PASS\"",
+            Mutect2TableColumns.NumSNPs: "\"num_SNPs\"",
+            Mutect2TableColumns.NumIndels: "\"num_indels\"",
+            Mutect2TableColumns.TITVRatio: "\"titv_ratio\"",
+        }
+        self.pipeline_step = "calls.mutations"
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.col = gsiqcetl.column.AnalysisMutect2Column
+        self.plots = {
+            Mutect2TableColumns.NumPASS: Plot(
+                title="Mutation Calls",
+                x_axis="SampleID",
+                y_axis="PASS Calls"
+            ),
+            Mutect2TableColumns.TITVRatio: Plot(
+                title="Ti/Tv",
+                x_axis="SampleID",
+                y_axis="Ti/Tv Ratio",
+                lo=0,
+            ),
+        }
+        self.glossary = {
+            Mutect2TableColumns.NumCalls: "Total number of calls identified by Mutect2",
+            Mutect2TableColumns.NumPASS: "Total number of PASS calls",
+            Mutect2TableColumns.NumSNPs: "Number of SNP calls",
+            Mutect2TableColumns.NumIndels: "Number of insertion/deletion calls",
+            Mutect2TableColumns.TITVRatio: "Ratio of transition vs transversion mutations",
+        }
+
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        mutect2 = load_cache(etl_caches, 'analysis_mutect2', 'analysis_mutect2',
+            gsiqcetl.column.AnalysisMutect2Column.MergedPineryLimsID, True)
+
+        data = self.get_data(mutect2, cases_data, workflow_ids) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_plot_data(data)
+
+        return context
+
+# DellyTable class defines a table for the delly workflow
+class DellyTable(Table):
+    def __init__(self):
+        self.title = "Genomic Structural Variants"
+        self.headings = {
+            DellyTableColumns.Case: "Donor",
+            DellyTableColumns.SampleID: "SampleID",
+            DellyTableColumns.NumCalls: "SV Calls",
+            DellyTableColumns.NumPASS: "SV PASS Calls",
+            DellyTableColumns.NumBND: "Translocations",
+            DellyTableColumns.NumDEL: "Deletions",
+            DellyTableColumns.NumDUP: "Duplications",
+            DellyTableColumns.NumINS: "Insertions",
+            DellyTableColumns.NumINV: "Inversions",
+        }
+        self.columns = {
+            DellyTableColumns.Case: "\"Donor\"",
+            DellyTableColumns.SampleID: "\"SampleID\"",
+            DellyTableColumns.NumCalls: "\"num_calls\"",
+            DellyTableColumns.NumPASS: "\"num_PASS\"",
+            DellyTableColumns.NumBND: "\"num_BND\"",
+            DellyTableColumns.NumDEL: "\"num_DEL\"",
+            DellyTableColumns.NumDUP: "\"num_DUP\"",
+            DellyTableColumns.NumINS: "\"num_INS\"",
+            DellyTableColumns.NumINV: "\"num_INV\"",
+        }
+        self.pipeline_step = "calls.structuralvariants"
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.col = gsiqcetl.column.AnalysisDellyColumn
+        self.plots = {
+            DellyTableColumns.NumPASS: Plot(
+                title="SV PASS Calls",
+                x_axis="SampleID",
+                y_axis="SV PASS Calls"
+            ),
+        }
+        self.glossary = {
+            DellyTableColumns.NumCalls: "The number of somatic structural variant calls identified by delly",
+            DellyTableColumns.NumPASS: "The number of structural variant calls marked as PASS",
+            DellyTableColumns.NumBND: "The number of PASS translocation calls",
+            DellyTableColumns.NumDEL: "The number of PASS deletion calls",
+            DellyTableColumns.NumDUP: "The number of PASS duplication calls",
+            DellyTableColumns.NumINS: "The number of PASS insertions calls",
+            DellyTableColumns.NumINV: "The number of PASS inversions calls",
+        }
+    
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        delly = load_cache(etl_caches, 'analysis_delly', 'analysis_delly',
+            gsiqcetl.column.AnalysisDellyColumn.MergedPineryLimsID, True)
+
+        data = self.get_data(delly, cases_data, workflow_ids) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_plot_data(data)
+
+        return context
+
+# PurpleTable class defines a table for the purples workflow
+class PurpleTable(Table):
+    def __init__(self):
+        self.title = "Purity and Ploidy Estimation"
+        self.headings = {
+            PurpleTableColumns.Case: "Donor",
+            PurpleTableColumns.SampleID: "SampleID",
+            PurpleTableColumns.Purity: "Purity",
+            PurpleTableColumns.Ploidy: "Ploidy",
+            PurpleTableColumns.Pga: "PGA",
+        }
+        self.columns = {
+            PurpleTableColumns.Case: "\"donor\"",
+            PurpleTableColumns.SampleID: "\"SampleID\"",
+            PurpleTableColumns.Purity: "\"purity\"",
+            PurpleTableColumns.Ploidy: "\"ploidy\"",
+            PurpleTableColumns.Pga: "\"PGA\"",
+        }
+        self.pipeline_step = "calls.purple"
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
+        self.col = gsiqcetl.column.AnalysisPurpleColumn
+        self.plots = {
+            PurpleTableColumns.Purity: Plot(
+                title="Purity",
+                x_axis="SampleID",
+                y_axis="Purity",
+            ),
+            PurpleTableColumns.Ploidy: Plot(
+                title="Ploidy",
+                x_axis="SampleID",
+                y_axis="Ploidy",
+            ),
+            PurpleTableColumns.Pga: Plot(
+                title="PGA",
+                x_axis="SampleID",
+                y_axis="PGA",
+            ),
+        }
+        self.glossary = {
+            PurpleTableColumns.Purity: "Estimated tumor purity in the sample",
+            PurpleTableColumns.Ploidy: "Estimated ploidy of the tumor sample after adjusting for purity",
+            PurpleTableColumns.Pga: "Percent genome altered score",
+        }
+    
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        purple = load_cache(etl_caches, 'analysis_purple', 'analysis_purple',
+            gsiqcetl.column.AnalysisPurpleColumn.MergedPineryLimsID, True)
+
+        data = self.get_data(purple, cases_data, workflow_ids) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_plot_data(data)
+
+        return context
+
+# RSEMTable class defines a table for the rsem workflow
+class RSEMTable(Table):
+    def __init__(self):
+        self.title = "Gene Expression"
+        self.headings = {
+            RSEMTableColumns.Case: "Donor",
+            RSEMTableColumns.SampleID: "SampleID",
+            RSEMTableColumns.Total: "Total Reads",
+            RSEMTableColumns.PctNonZero: "Percent Non-zero",
+            RSEMTableColumns.Q0_05: "0.05 Quantile",
+            RSEMTableColumns.Q0_5: "0.5 Quantile",
+            RSEMTableColumns.Q0_95: "0.95 Quantile",
+        }
+        self.columns = {
+            RSEMTableColumns.Case: "\"Donor\"",
+            RSEMTableColumns.SampleID: "\"SampleID\"",
+            RSEMTableColumns.Total: "\"total\"",
+            RSEMTableColumns.PctNonZero: "\"pct_non_zero\"",
+            RSEMTableColumns.Q0_05: "\"Q0.05\"",
+            RSEMTableColumns.Q0_5: "\"Q0.5\"",
+            RSEMTableColumns.Q0_95: "\"Q0.95\"",
+        }
+        self.pipeline_step = "calls.expression"
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.col = gsiqcetl.column.AnalysisRSEMColumn
+        self.plots = {
+            RSEMTableColumns.PctNonZero: Plot(
+                title="Percent Expressed",
+                x_axis="SampleID",
+                y_axis="Percent Non-zero",
+                hi=100,
+                lo=0,
+            ),
+            RSEMTableColumns.Q0_5: Plot(
+                title="Median TPM",
+                x_axis="SampleID",
+                y_axis="0.5 Quantile",
+            ),
+        }
+        self.glossary = {
+            RSEMTableColumns.Total: "Total number of reads assigned to a gene",
+            RSEMTableColumns.PctNonZero: "Percentage of non-zero read counts",
+            RSEMTableColumns.Q0_05: "Expression at the 0.05 quantile",
+            RSEMTableColumns.Q0_5: "Expression at the 0.5 quantile",
+            RSEMTableColumns.Q0_95: "Expression at the 0.95 quantile",
+        }
+    
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        rsem = load_cache(etl_caches, 'analysis_rsem', 'analysis_rsem',
+            gsiqcetl.column.AnalysisRSEMColumn.MergedPineryLimsID, True)
+
+        data = self.get_data(rsem, cases_data, workflow_ids) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WT_')].drop_duplicates()
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_plot_data(data)
+
+        return context
+
+# StarFusionTable class defines a table for the star fusion workflow
+class StarFusionTable(Table):
+    def __init__(self):
+        self.title = "Gene Fusions"
+        self.headings = {
+            StarFusionTableColumns.Case: "Donor",
+            StarFusionTableColumns.SampleID: "SampleID",
+            StarFusionTableColumns.NumRecords: "Fusion Calls",
+        }
+        self.columns = {
+            StarFusionTableColumns.Case: "\"Donor\"",
+            StarFusionTableColumns.SampleID: "\"SampleID\"",
+            StarFusionTableColumns.NumRecords: "\"num_records\"",
+        }
+        self.pipeline_step = "calls.fusions"
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.col = gsiqcetl.column.AnalysisStarFusionColumn
+        self.plots = {
+            StarFusionTableColumns.NumRecords: Plot(
+                title="Fusion Calls",
+                x_axis="SampleID",
+                y_axis="Fusion Calls"
+            )
+        }
+        self.glossary = {
+            StarFusionTableColumns.NumRecords: "Number of gene fusions identified by StarFusion",
+        }  
+    
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        starfusion = load_cache(etl_caches, 'analysis_starfusion', 'analysis_starfusion',
+            gsiqcetl.column.AnalysisStarFusionColumn.MergedPineryLimsID, True)
+
+        data = self.get_data(starfusion, cases_data, workflow_ids) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WT_')].drop_duplicates()
+            data = data.sort_values(by=['Donor', 'SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_plot_data(data)
 
         return context
 
@@ -958,7 +957,15 @@ def get_seq_metrics(cache, cases_data, column, derived_col, join_col, add_lane=F
         query = cases['LIMS ID'].unique()
         data = cache[cache[lims_col].isin(query)].copy()
     
-    data.drop(columns=[col for col in ['Donor', 'SampleID', 'Sample Type'] if col in data.columns], inplace=True)
+    elif join_col == 'Donor':
+        query = cases['Donor'].unique()
+        data = cache[cache['Donor'].isin(query)].copy()
+    
+    columns_to_drop = ['SampleID', 'Sample Type']
+    if join_col != 'Donor':
+        columns_to_drop.append('Donor')
+
+    data.drop(columns=[col for col in columns_to_drop if col in data.columns], inplace=True)
     
     if derived_col:
         data = derived_col(data)
@@ -970,6 +977,8 @@ def get_seq_metrics(cache, cases_data, column, derived_col, join_col, add_lane=F
         data = data.merge(cases[['LIMS ID', 'Donor', 'SampleID']], left_on=lims_col, right_on='LIMS ID', how='left')
     elif join_col == 'Sample Name':
         data = data.merge(cases[['Sample Name', 'Donor', 'SampleID']], left_on='library', right_on='Sample Name', how='left')
+    elif join_col == 'Donor':
+        data = data.merge(cases[['Donor', 'SampleID']], on='Donor', how='left')
     
     data['Sample Type'] = data['SampleID'].apply(lambda x: 'Matched Normal' if '_R_' in str(x) else 'Tumor').str.strip()
     
@@ -997,23 +1006,23 @@ def get_seq_metrics(cache, cases_data, column, derived_col, join_col, add_lane=F
 
 
 def load_cache(etl_caches, cache_version: str, cache_name: str, id_column, merged: bool = False):
-    try:
-        version = etl_caches.load_same_version(cache_version).remove_missing(cache_name)
-        cache = version.unique(cache_name)
-        if id_column not in cache:
-            logging.warning(f"'{id_column}' column not found in cache: {cache_name}.{cache_version}")
-            return pd.DataFrame()
+    version = etl_caches.load_same_version(cache_version).remove_missing(cache_name)
+    cache = version.unique(cache_name)
+    
+    if id_column not in cache:
+        logging.warning(f"'{id_column}' column not found in cache: {cache_name}.{cache_version}")
+        return pd.DataFrame()
+    
+    else:
+        if merged:
+            single_id_column = "Pinery Lims ID"
+            cache[single_id_column] = cache[id_column]
+            cache = cache.explode(single_id_column)
+        
         else:
-            if merged:
-                single_id_column = "Pinery Lims ID"
-                cache[single_id_column] = cache[id_column]
-                cache = cache.explode(single_id_column)
-            else:
-                single_id_column = id_column
-            cache.set_index(single_id_column, inplace=True, drop=False)
-            cache.sort_index(inplace=True)
-            return cache
-    except Exception:
-            logging.exception(f'Error loading cache: {cache_version}.{cache_name}')
-            return pd.DataFrame()
+            single_id_column = id_column
+        
+        cache.set_index(single_id_column, inplace=True, drop=False)
+        cache.sort_index(inplace=True)
+        return cache
 

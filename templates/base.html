@@ -15,7 +15,7 @@
 
         /* Alternate row colors */
         .case_table tr:nth-child(odd) {
-            background-color: #e0e0e0 ;  
+            background-color: #efefef ;  
         }
 
         .case_table tr:nth-child(even) {
@@ -39,7 +39,7 @@
         </tr>
     </table>
    
-    <p style="font-size: 12px;">{{ header.blurb }}</p>
+    <div style="font-size: 12px;">{{ header.blurb | safe }}</div>
 
     <table id="project_table">
         <tr>
@@ -55,17 +55,29 @@
 
     <h2 style="margin-left: 20px" id="toc"><b>Contents</b></h2>
     {% for section in sections %}
-        <div class="toc-row"><a href="#{{ section }}" style="margin-left: 5px;">{{ loop.index }}. {{ sections[section].title }}</a></div>
+        {% set section_index = loop.index %}
+        
+        <div class="toc-row">
+            <a href="#{{ section }}">{{ loop.index }}. {{ sections[section].title }}</a>
+            <div class="toc-fill"></div>
+            <div class="toc-page" data-target="#{{ section }}"></div>
+        </div>
         {% if sections[section].tables|length > 1 %}
             {% for table in sections[section].tables %}     
-                <div class="toc-row" style="margin-left:100px"><a href="#{{ section }}_{{ table }}" style="margin-left: 5px;"> {{ sections[section].tables[table].title }}</a></div>
+                <div class="toc-row toc-sub">
+                    <a href="#{{ section }}_{{ table }}"> 
+                        {{ section_index }}.{{ loop.index }}. {{ sections[section].tables[table].title }}
+                    </a>
+                    <div class="toc-fill"></div>
+                    <div class="toc-page" data-target="#{{ section }}_{{ table }}"></div>
+                </div>
             {% endfor %}
         {% endif %}
     {% endfor %}
     <div style="page-break-after: always;"></div>
 
     {% for section in sections %}
-        <div class="landscape">
+        <div class="portrait">
             <div class="title_toc_wrap">
                 <h2 id="{{ section }}">{{ loop.index }}. {{ sections[section].title }}</h2>
                 <div class="return_to_toc"><a href="#toc"><b>Contents &#8593</b></a></div>
@@ -74,7 +86,7 @@
         </div>
 
         {% for table in sections[section].tables %}
-            <div class="landscape">
+            <div class="portrait">
                 {% if sections[section].tables|length > 1 %}        
                     <h3 id="{{ section }}_{{ table }}">{{ sections[section].tables[table].title }}</h3>
                 {% endif %}
