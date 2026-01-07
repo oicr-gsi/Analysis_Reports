@@ -1,0 +1,146 @@
+{
+  "WGTS": {
+    "header": {
+      "blurb": "<p>This data release report summarizes metrics generated from OICR's quality control and analysis workflows. All cases in this report are processed through the Whole Genome and Transcriptome sequencing (WGTS) and analysis pipeline. </p><p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p><p style=\"font-style: italic; color: grey;\">This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program (genomics.oicr.on.ca) through funding provided by the Government of Ontario.</p>"
+    },
+    "cases": {
+      "blurb": "The following cases are included in this release. Each case includes two samples, a tumour with a matched normal/reference. Whole genome (WG) libraries are generated from the tumour/normal pair. Whole transcriptome (WT) libraries are generated from only the tumour sample."
+    },
+    "raw_seq_data": {
+      "blurb": "All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files."
+    },
+    "call_ready": {
+      "blurb": "Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference. Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. The lane level alignments are merged and processed to a call ready state."
+    },
+    "mutect2": {
+      "blurb": "Call ready alignments from a tumour/normal pair are used to generate somatic variants (snvs + indels). Variants are generated with mutect2, and annotated with variant effect predictor."
+    },
+    "delly": {
+      "blurb": "Call ready alignments from a tumour/normal pair are analyzed with delly to generate somatic structural variants(deletions, duplications, inversion, insertions, translocations)."
+    },
+    "purple": {
+      "blurb": "Call ready alignments, somatic and structural variants are analyzed with purple to estimate the purity and copy number profile of the tumour sample."
+    },
+    "rsem": {
+      "blurb": "Aligned whole transcriptome data is analyzed with RSEM to generate expression calls."
+    },
+    "starfusion": {
+      "blurb": "Aligned whole transcriptome data is analyzed with STAR-fusion and arriba to generate gene fusion calls."
+    }
+  },
+  "WGS": {
+    "header": {
+      "blurb": "<p>This data release report summarizes metrics generated from OICR's quality control and analysis workflows. All cases in this report are processed through the Whole Genome sequencing (WGS) and analysis pipeline. </p><p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p><p style=\"font-style: italic; color: grey;\">This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program (genomics.oicr.on.ca) through funding provided by the Government of Ontario.</p>"
+    },
+    "cases": {
+      "blurb": "The following cases are included in this release. Each case includes two samples, a tumour with a matched normal/reference. Whole genome (WG) libraries are generated from the tumour/normal pair."
+    },
+    "raw_seq_data": {
+      "blurb": "All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files."
+    },
+    "call_ready": {
+      "blurb": "Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference. Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. The lane level alignments are merged and processed to a call ready state."
+    },
+    "mutect2": {
+      "blurb": "Call ready alignments from a tumour/normal pair are used to generate somatic variants (snvs + indels). Variants are generated with mutect2, and annotated with variant effect predictor."
+    },
+    "delly": {
+      "blurb": "Call ready alignments from a tumour/normal pair are analyzed with delly to generate somatic structural variants(deletions, duplications, inversion, insertions, translocations)."
+    },
+    "purple": {
+      "blurb": "Call ready alignments, somatic and structural variants are analyzed with purple to estimate the purity and copy number profile of the tumour sample."
+    }
+  },
+  "pWGS+WGS": {
+    "header": {
+      "blurb": "<p>This data release report summarizes metrics generated from OICR's quality control and analysis workflows. All cases in this report are processed through the Plasma Whole Genome sequencing (pWGS) and analysis pipeline. </p><p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p><p style=\"font-style: italic; color: grey;\">This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program (genomics.oicr.on.ca) through funding provided by the Government of Ontario.</p>"
+    },
+    "cases": {
+      "blurb": "The following cases are included in this release. Each case includes a tumour with a matched normal/reference and a plasma sample. Whole genome (WG) libraries are generated from the tumour/normal pair."
+    },
+    "raw_seq_data": {
+      "blurb": "All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files."
+    },
+    "call_ready": {
+      "blurb": "Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference. Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. The lane level alignments are merged and processed to a call ready state."
+    },
+    "mutect2": {
+      "blurb": "Call ready alignments from a tumour/normal pair are used to generate somatic variants (snvs + indels). Variants are generated with mutect2, and annotated with variant effect predictor."
+    },
+    "delly": {
+      "blurb": "Call ready alignments from a tumour/normal pair are analyzed with delly to generate somatic structural variants(deletions, duplications, inversion, insertions, translocations)."
+    },
+    "purple": {
+      "blurb": "Call ready alignments, somatic and structural variants are analyzed with purple to estimate the purity and copy number profile of the tumour sample."
+    },
+    "mrdetect" : {
+      "blurb": "Call ready alignments from the plasma sample and WGS matched donor sample are analyzed with mrdetect and metrics are computed on the confidence of minimal residual disease detection."
+    }
+  },
+  "pWGS+WGTS": {
+    "header": {
+      "blurb": "<p>This data release report summarizes metrics generated from OICR's quality control and analysis workflows. All cases in this report are processed through the Plasma Whole Genome sequencing (pWGS) and analysis pipeline. </p><p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p><p style=\"font-style: italic; color: grey;\">This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program (genomics.oicr.on.ca) through funding provided by the Government of Ontario.</p>"
+    },
+    "cases": {
+      "blurb": "The following cases are included in this release. Each case includes a tumour with a matched normal/reference and a plasma sample. Whole genome (WG) libraries are generated from the tumour/normal pair."
+    },
+    "raw_seq_data": {
+      "blurb": "All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files."
+    },
+    "call_ready": {
+      "blurb": "Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference. Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. The lane level alignments are merged and processed to a call ready state."
+    },
+    "mutect2": {
+      "blurb": "Call ready alignments from a tumour/normal pair are used to generate somatic variants (snvs + indels). Variants are generated with mutect2, and annotated with variant effect predictor."
+    },
+    "delly": {
+      "blurb": "Call ready alignments from a tumour/normal pair are analyzed with delly to generate somatic structural variants(deletions, duplications, inversion, insertions, translocations)."
+    },
+    "purple": {
+      "blurb": "Call ready alignments, somatic and structural variants are analyzed with purple to estimate the purity and copy number profile of the tumour sample."
+    },
+    "mrdetect" : {
+      "blurb": "Call ready alignments from the plasma sample and WGS matched donor sample are analyzed with mrdetect and metrics are computed on the confidence of minimal residual disease detection."
+    },
+    "rsem": {
+      "blurb": "Aligned whole transcriptome data is analyzed with RSEM to generate expression calls."
+    },
+    "starfusion": {
+      "blurb": "Aligned whole transcriptome data is analyzed with STAR-fusion and arriba to generate gene fusion calls."
+    }
+  },
+  "TAR": {
+    "header": {
+      "blurb": "<p>This data release report summarizes metrics generated from OICR's quality control and analysis workflows. All cases in this report are processed through the Targeted sequencing (TAR) and analysis pipeline. </p><p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p><p style=\"font-style: italic; color: grey;\">This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program (genomics.oicr.on.ca) through funding provided by the Government of Ontario.</p>"
+    },
+    "cases": {
+      "blurb": "The following cases are included in this release. Each case includes a tumour with a matched normal/reference."
+    },
+    "raw_seq_data": {
+      "blurb": "All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files."
+    },
+    "call_ready": {
+      "blurb": "Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference. Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. The lane level alignments are merged and processed to a call ready state."
+    },
+    "consensus_cruncher": {
+      "blurb": "FASTQ files are processed with ConsensusCruncherWorkflow to generate UMI-tagged and consensus-collapsed bam files. The ConsensusCruncherWorkflow uses MuTect2 followed by Variant Effect Predictor to generate raw call files, and HSMetrics to generate collapsed coverage metrics. For variant calling, the duplex consensus sequences and single-stand consensus sequence with singleton corrected bam files are used to generate raw calls, which are then annotated with the variant allele frequency from the all-unique bam file"
+    }
+  },
+  "sWGS": {
+    "header": {
+      "blurb": "<p>This data release report summarizes metrics generated from OICR's quality control and analysis workflows. All cases in this report are processed through the Shallow Whole Genome sequencing (sWGS) and analysis pipeline. </p><p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p><p style=\"font-style: italic; color: grey;\">This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program (genomics.oicr.on.ca) through funding provided by the Government of Ontario.</p>"
+    },
+    "cases": {
+      "blurb": "The following cases are included in this release. Each case includes a tumour with a matched normal/reference."
+    },
+    "raw_seq_data": {
+      "blurb": "All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files."
+    },
+    "call_ready": {
+      "blurb": "Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference. Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. The lane level alignments are merged and processed to a call ready state."
+    },
+    "ichorcna": {
+      "blurb": "Call ready alignments from a tumour/normal pair are analyzed with ichorCNA to estimate tumour fractions in ultra-low pass WGS and predict the copy number profile of the tumour sample."
+    }
+  } 
+}

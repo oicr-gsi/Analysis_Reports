@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import argparse
+import logging
 import re
 import gzip
 import shutil
@@ -17,26 +18,80 @@ from section import (
     Mutect2Section, 
     DellySection, 
     PurpleSection,
+    MrdSection,
     RSEMSection,
     StarFusionSection,
 )
 
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Report class outlines the structure and order or a report
 class Report:
-    def __init__(self, cases_data, project, workflow_ids):
+    def __init__(self, cases_data, project, workflow_ids, assay):
+        logger.debug("Initializing Report object.")
         self.cases_data = cases_data
         self.workflow_ids = workflow_ids
-        self.header = HeaderSection(project)  
-        self.sections = [
-            CasesSection(),
-            RawSeqDataSection(),
-            CallReadyAlignmentsSection(),
-            Mutect2Section(),
-            DellySection(),
-            PurpleSection(),
-            RSEMSection(),
-            StarFusionSection(),
-        ]
+        self.assay = assay
+        self.header = HeaderSection(project, assay) 
+        self.sections = self._get_sections() 
+    
+    def _get_sections(self):
+        '''
+        Returns a list of sections to be included in the report based on the assay type
+
+        Parameters: None
+        Returns:
+        - A list of section objects to be included in the report
+        '''
+        if self.assay == "WGTS":
+            return [
+                CasesSection(self.assay),
+                #RawSeqDataSection(self.assay),
+                CallReadyAlignmentsSection(self.assay),
+                Mutect2Section(self.assay),
+                DellySection(self.assay),
+                PurpleSection(self.assay),
+                RSEMSection(self.assay),
+                StarFusionSection(self.assay),
+            ]
+        elif self.assay == "WGS":
+            return [
+                CasesSection(self.assay),
+                #RawSeqDataSection(self.assay),
+                CallReadyAlignmentsSection(self.assay),
+                Mutect2Section(self.assay),
+                DellySection(self.assay),
+                PurpleSection(self.assay),
+            ]
+        elif self.assay == "pWGS+WGS":
+            return [
+                CasesSection(self.assay),
+                #RawSeqDataSection(self.assay),
+                CallReadyAlignmentsSection(self.assay),
+                Mutect2Section(self.assay),
+                DellySection(self.assay),
+                PurpleSection(self.assay),
+                MrdSection(self.assay),
+            ]
+        elif self.assay == "pWGS+WGTS":
+            return [
+                CasesSection(self.assay),
+                #RawSeqDataSection(self.assay),
+                CallReadyAlignmentsSection(self.assay),
+                Mutect2Section(self.assay),
+                DellySection(self.assay),
+                PurpleSection(self.assay),
+                MrdSection(self.assay),
+                RSEMSection(self.assay),
+                StarFusionSection(self.assay),
+            ]
+        else:
+            logger.error(f"Unsupported assay type: {self.assay}")
+            raise ValueError(f"Assay type {self.assay} not recognized. Supported assays are WGTS, WGS and pWGS.")   
 
     def load_context(self):
         report_context = {
@@ -44,7 +99,7 @@ class Report:
             "sections": {}
         }
         for section in self.sections:
-            section_context = section.load_context(self.cases_data, self.workflow_ids)
+            section_context = section.load_context(self.cases_data, self.workflow_ids, self.assay)
             if section_context:
                 report_context["sections"][section.name] = section_context
 
@@ -72,7 +127,6 @@ def extract_workflow_ids(data):
         for item in data:
             if item is not None:
                 workflow_ids.extend(extract_workflow_ids(item))
-
     return workflow_ids
 
 def get_fp_records(provenance, workflow_ids):
@@ -96,6 +150,7 @@ def get_fp_records(provenance, workflow_ids):
     header = infile.readline().strip().split('\t')
     if 'Workflow Run SWID' not in header:
         infile.close()
+        logger.error("'Workflow Run SWID' column not found in header.")
         raise ValueError("'Workflow Run SWID' column not found in header.")
 
     swid_idx = header.index('Workflow Run SWID')
@@ -188,11 +243,15 @@ def makepdf(html, outputfile):
     '''
     css_file = os.path.join(os.path.dirname(__file__), './static/css/style.css')
 
-    htmldoc = HTML(string=html, base_url=__file__)
-    htmldoc.write_pdf(outputfile, stylesheets=[CSS(css_file)], presentational_hints=True)
+    try:
+        htmldoc = HTML(string=html, base_url=__file__)
+        htmldoc.write_pdf(outputfile, stylesheets=[CSS(css_file)], presentational_hints=True)
+    except Exception as e:
+        logger.error(f"Failed to generate PDF: {e}")
+        raise
 
 
-def generate_report(input, output, temp_dir):
+def generate_report(input, output, temp_dir, assay):
     '''
     (str, str, bool) -> None
     
@@ -217,7 +276,7 @@ def generate_report(input, output, temp_dir):
     header, records = get_fp_records(provenance, workflow_ids)
     cases_data, project = parse_fp_records(header, records)
 
-    report = Report(cases_data, project, workflow_ids)
+    report = Report(cases_data, project, workflow_ids, assay)
     report_context = report.load_context()
 
     # Generate HTML content using Jinja2 templates
@@ -228,11 +287,12 @@ def generate_report(input, output, temp_dir):
     contents = results_template.render(report_context)
 
     makepdf(contents, outfile)
-    print(f"Created report {outfile}")
 
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
+        logger.info(f"Temporary directory {temp_dir} cleaned up.")
 
+    logger.info(f"Report generation complete: {outfile}")
 
 def is_gzipped(file):
     '''
@@ -273,8 +333,15 @@ if __name__ == "__main__":
         required=False,
         help="Name of output file. Default names pdf Analysis_Report.pdf"
     )
+    parser.add_argument(
+    '-a',
+    '--assay',
+    type=str,
+    required=True,
+    help="Specify assay type (e.g., WGTS, WGS, pWGS)"
+    )
     args = parser.parse_args()
 
-    print(f"Reading input from {args.infile}")
+    logger.info(f"Reading input from {args.infile}")
     temp_dir = 'temp'
-    generate_report(input=args.infile, output=args.outfile, temp_dir=temp_dir)
+    generate_report(input=args.infile, output=args.outfile, temp_dir=temp_dir, assay=args.assay)

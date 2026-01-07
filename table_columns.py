@@ -13,16 +13,16 @@ class CommonColumns:
 
 class CasesTableColumns:
     Case = CommonColumns.Case
-    SampleID = "SampleID"
-    GroupID = "Group ID"
-    LibraryType = "Library Type"
-    TissueType = "Tissue Type"
-    TissueOrigin = "Tissue Origin"
-    TissuePreparation = "Tissue Preparation"
     ExternalID = "External ID"
+    SampleID = "SampleID"
+    LibraryType = "Library Type"
+    TissueOrigin = "Tissue Origin"
+    TissueType = "Tissue Type"
+    GroupID = "Group ID"
+    TissuePreparation = "Tissue Preparation"
+    
 
 class WGLaneLevelTableColumns:
-    Case = CommonColumns.Case
     SampleID = CommonColumns.SampleID
     Lane = "Lane"
     CoverageDedup = "coverage deduplicated"
@@ -33,7 +33,6 @@ class WGLaneLevelTableColumns:
     SampleType = "Sample Type"
 
 class WTLaneLevelTableColumns:
-    Case = CommonColumns.Case
     SampleID = CommonColumns.SampleID
     Lane = "Lane"
     PctCodingBases = "PCT_CODING_BASES"
@@ -43,7 +42,6 @@ class WTLaneLevelTableColumns:
     SampleType = "Sample Type"
 
 class WGCallReadyTableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     CoverageDedup = "coverage deduplicated"
     MarkDupPctDup = "mark duplicates_PERCENT_DUPLICATION"
@@ -52,16 +50,13 @@ class WGCallReadyTableColumns:
     SampleType = "Sample Type"
 
 class WTCallReadyTableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     PctCodingBases = "PCT_CODING_BASES"
     TotalClusters = "total clusters"
     MappedReads = "mapped reads"
     RRNAContamination = "rrna_contam"
-    SampleType = "Sample Type"
 
 class Mutect2TableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     NumCalls = "num_calls"
     NumPASS = "num_PASS"
@@ -70,7 +65,6 @@ class Mutect2TableColumns:
     TITVRatio = "titv_ratio"
 
 class DellyTableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     NumCalls = "num_calls"
     NumPASS = "num_PASS"
@@ -81,14 +75,19 @@ class DellyTableColumns:
     NumINV = "num_INV"
 
 class PurpleTableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     Purity = "purity"
     Ploidy = "ploidy"
     Pga = "PGA"
 
+class MrdTableColumns:
+    SampleID = "SampleID"
+    SitesDetected = "sites_detected"
+    CancerDetected = "cancer_detected"
+    CandidateSNPs = "sample_candidate_SNPs"
+    SampleCoverage = "sample_coverage"
+
 class RSEMTableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     Total = "total"
     PctNonZero = "pct_non_zero"
@@ -103,6 +102,5 @@ class RSEMTableColumns:
     Q1 = "Q1"
 
 class StarFusionTableColumns:
-    Case = CommonColumns.Case
     SampleID = "SampleID"
     NumRecords = "num_records"

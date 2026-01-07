@@ -7,11 +7,17 @@ from tables import (
     Mutect2Table,
     DellyTable,
     PurpleTable,
+    MrdTable,
     RSEMTable,
     StarFusionTable,
 )
 from typing import List, Any
 from datetime import date
+import json
+
+def load_section_config(filepath='./templates/blurb.json'):
+    with open(filepath, "r") as f:
+        return json.load(f)
 
 # Section class defines a section of the report
 class Section:
@@ -19,8 +25,13 @@ class Section:
     blurb: str  # blurb of section
     tables: List[Any]  # tables of section
     name: str  # name of section, used as key in context for jinja2 templating
+    assay: str  # assay type, e.g., 'WGS', 'RNA-Seq', etc.
 
-    def load_context(self, cases_data, workflow_ids):
+    def _get_blurb(self):
+        config = load_section_config()
+        return config.get(self.assay, {}).get(self.name, {}).get("blurb", "")
+
+    def load_context(self, cases_data, workflow_ids, assay=None):
         '''
         Returns a dict containing the context of the section, including its tables.
 
@@ -30,6 +41,10 @@ class Section:
         Returns:
         - A dictionary with the section's context, including title, blurb, and tables
         '''
+        if assay:
+            self.assay = assay
+            self.blurb = self._get_blurb()
+
         context = {
             "title": self.title,
             "blurb": self.blurb,
@@ -55,22 +70,12 @@ class Section:
 
 # HeaderSection class defines the header of the report
 class HeaderSection(Section):
-    def __init__(self, project):
+    def __init__(self, project, assay):
         self.project = project
+        self.assay = assay
         self.title = project 
         self.name = "header"
-        self.blurb = '''
-        <p>This data release report summarizes metrics generated from OICR's 
-        quality control and analysis workflows. All cases in this report are processed through 
-        the Whole Genome and Transcriptome (WGTS) sequencing and analysis pipeline. </p>
-        
-        <p><strong>Publications resulting from this data are requested to include the following acknowledgement statement:</strong></p>
-        
-        <p style="font-style: italic; color: grey;">
-        This study was conducted with the support of the Ontario Institute for Cancer Research's Genomics Program 
-        (genomics.oicr.on.ca) through funding provided by the Government of Ontario.
-        </p>
-        '''
+        self.blurb = self._get_blurb()
 
     def load_context(self):
         '''
@@ -90,136 +95,101 @@ class HeaderSection(Section):
 
 #CasesSection class defines the section for cases
 class CasesSection(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Cases"
-        self.blurb = '''
-        The following cases are included in this release. Each case 
-        includes two samples, a tumor with a matched normal/reference.
-        Whole genome (WG) libraries are generated from the tumour/normal pair. 
-        Whole transcriptome (WT) libraries are generated from only the tumour sample. 
-        '''
+        self.assay = assay
         self.name = "cases"
+        self.blurb = self._get_blurb()
         self.tables = [
             CasesTable(),
         ]
 
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
-
 # RawSeqDataSection class defines the section for lane level data
 class RawSeqDataSection(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Raw Sequence Data"
-        self.blurb = """
-        All libraries are sequenced on the illumina Novaseq X Plus platform to generate demultiplexed FASTQ files.
-        """
+        self.assay = assay
         self.name = "raw_seq_data"
+        self.blurb = self._get_blurb()
         self.tables = [
             WGLaneLevelTable(),
             WTLaneLevelTable(),
         ]
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
 
 #CallReadyAlignmentsSection class defines the section for call ready alignments
 class CallReadyAlignmentsSection(Section):
-    def __init__(self):
-        self.title = "Call Ready Alignments"
-        self.blurb = """
-        Raw sequence data (fastq) is trimmed to remove adapter sequence and aligned to the hg38 genomic reference.
-        Each sample may have multiple bam files depending on how many lanes of sequence data has been generated. 
-        The lane level alignments are merged and processed to a call ready state.
-        """
+    def __init__(self, assay):
+        self.title = "Aligned Sequence Data"
+        self.assay = assay
         self.name = "call_ready"
+        self.blurb = self._get_blurb()
         self.tables = [
             WGCallReadyTable(),
             WTCallReadyTable(),
         ]
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
-
+    
 # Mutect2Section class defines the section for the mutect2 workflow
 class Mutect2Section(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Mutations"
-        self.blurb = '''
-        Call ready alignments from a tumor/normal pair are used to generate somatic variants (snvs + indels). 
-        Variants are generated with mutect2, and annotated with variant effect predictor.
-        '''
+        self.assay = assay
         self.name = "mutect2"
+        self.blurb = self._get_blurb()
         self.tables = [
             Mutect2Table(),
         ]
-    
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
 
 # DellySection class defines the section for delly workflow
 class DellySection(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Genomic Structural Variants"
-        self.blurb = '''
-        Call ready alignments from a tumour/normal pair are analyzed with delly 
-        to generate somatic structural variants(deletions, duplications, inversion, insertions, translocations).
-        '''
+        self.assay = assay
         self.name = "delly"
+        self.blurb = self._get_blurb()
         self.tables = [
             DellyTable(),
         ]
-    
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
 
 # PurpleSection class defines the section for purple workflow
 class PurpleSection(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Purity and Ploidy Estimation"
-        self.blurb = '''
-        Call ready alignments, somatic and structural variants are analyzed with purple to estimate the purity and copy number
-        profile of the tumour sample.
-        '''
+        self.assay = assay
         self.name = "purple"
+        self.blurb = self._get_blurb()
         self.tables = [
             PurpleTable(),
         ]
-    
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
+
+# MrdSection class defines the section for mrdetect workflow
+class MrdSection(Section):
+    def __init__(self, assay):
+        self.title = "Minimal Residual Disease Detection"
+        self.assay = assay
+        self.name = "mrdetect"
+        self.blurb = self._get_blurb()
+        self.tables = [
+            MrdTable(),
+        ]
 
 # RSEMSection class defines the section for RSEM workflow
 class RSEMSection(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Gene Expression"
-        self.blurb = '''
-        Aligned whole transcriptome data is analyzed with RSEM to generate expression calls.
-        '''
+        self.assay = assay
         self.name = "rsem"
+        self.blurb = self._get_blurb()
         self.tables = [
             RSEMTable(),
         ]
-    
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context
 
 #StarFusionSection class defines the section for StarFusion
 class StarFusionSection(Section):
-    def __init__(self):
+    def __init__(self, assay):
         self.title = "Gene Fusions"
-        self.blurb = '''
-        Aligned whole transcriptome data is analyzed with STAR-fusion and arriba to generate gene fusion calls.
-        '''
+        self.assay = assay
         self.name = "starfusion"
+        self.blurb = self._get_blurb()
         self.tables = [
             StarFusionTable(),
         ]
-
-    def load_context(self, cases_data, workflow_ids):
-        context = super().load_context(cases_data, workflow_ids)
-        return context

@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 import pandas as pd
 import os
+import logging
 from gsiqcetl import QCETLMultiCache
 import gsiqcetl.column
 import logging
@@ -16,12 +17,19 @@ from table_columns import (
     Mutect2TableColumns,
     DellyTableColumns,
     PurpleTableColumns,
+    MrdTableColumns,
     RSEMTableColumns,
     StarFusionTableColumns, 
 )
 from plot import(
     Plot,
 )
+
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 NUM_DP = 2
 # The Table class defines each table that is generated
@@ -51,8 +59,7 @@ class Table:
         merge_col = ['SWID', 'Tissue Type']
         data = data.merge(cases_data[['SWID', 'Tissue Type', 'SampleID']], on=merge_col, how='left')
         data = data[[col.strip('"') for col in self.columns.values() if col.strip('"') in data.columns]].copy()
-        data = data.rename(columns=lambda x: x.capitalize() if x.lower() == 'donor' else x)
-        col = ['Donor', 'SampleID'] + [col for col in data.columns if col not in ['Donor', 'SampleID']]
+        col = ['SampleID'] + [col for col in data.columns if col not in ['SampleID']]
         data = data[col].drop_duplicates()
         data[data.select_dtypes(include='float').columns] = data.select_dtypes(include='float').round(2)
 
@@ -84,7 +91,7 @@ class Table:
                             }
 
                     except Exception as e:
-                        print(f"Plot generation failed for {col_key}: {e}")
+                        logger.error(f"Plot generation failed for {col_key}: {e}")
                 
             return plots
 
@@ -95,7 +102,10 @@ class Table:
                 if plot.y_axis in data.columns:
                     try:
                         data[plot.y_axis] = pd.to_numeric(data[plot.y_axis], errors='coerce')
-                        plot_data = data[[plot.x_axis, plot.y_axis, 'Sample Type']].dropna()
+                        req_col = [plot.x_axis, plot.y_axis]
+                        if 'Sample Type' in data.columns:
+                                req_col.append('Sample Type')
+                        plot_data = data[req_col].dropna()
                         if not plot_data.empty:
                             # Create a unique filename for the plot
                             plot_prefix = self.pipeline_step.replace('.', '_')
@@ -107,7 +117,7 @@ class Table:
                             }
 
                     except Exception as e:
-                        print(f"Plot generation failed for {col_key}: {e}")
+                        logger.error(f"Plot generation failed for {col_key}: {e}")
                 
             return plots
     
@@ -124,29 +134,40 @@ class Table:
 # CasesTable class defines the Cases table
 class CasesTable(Table):
     def __init__(self):
-        self.title = "Donors"
+        self.title = "Cases"
         self.headings = {
             CasesTableColumns.Case: "Donor",
-            CasesTableColumns.SampleID: "SampleID",
-            CasesTableColumns.GroupID: "Group ID",
-            CasesTableColumns.LibraryType: "Library Type",
-            CasesTableColumns.TissueType: "Tissue Type",
-            CasesTableColumns.TissueOrigin: "Tissue Origin",
-            CasesTableColumns.TissuePreparation: "Tissue Preparation",
             CasesTableColumns.ExternalID: "External ID",
+            CasesTableColumns.SampleID: "SampleID",
+            CasesTableColumns.LibraryType: "Library Type",
+            CasesTableColumns.TissueOrigin: "Tissue Origin",
+            CasesTableColumns.TissueType: "Tissue Type",
+            CasesTableColumns.GroupID: "Group ID",
+            CasesTableColumns.TissuePreparation: "Tissue Preparation",
+            
         }
         self.columns = {
             CasesTableColumns.Case: "\"Donor\"",
-            CasesTableColumns.SampleID: "\"SampleID\"",
-            CasesTableColumns.GroupID: "\"Group ID\"",
-            CasesTableColumns.LibraryType: "\"Library Type\"",
-            CasesTableColumns.TissueType: "\"Tissue Type\"",
-            CasesTableColumns.TissueOrigin: "\"Tissue Origin\"",
-            CasesTableColumns.TissuePreparation: "\"Tissue Preparation\"",
             CasesTableColumns.ExternalID: "\"External ID\"",
+            CasesTableColumns.SampleID: "\"SampleID\"",
+            CasesTableColumns.LibraryType: "\"Library Type\"",
+            CasesTableColumns.TissueOrigin: "\"Tissue Origin\"",
+            CasesTableColumns.TissueType: "\"Tissue Type\"",
+            CasesTableColumns.GroupID: "\"Group ID\"",
+            CasesTableColumns.TissuePreparation: "\"Tissue Preparation\"",
+            
         }
         self.source_file = "/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz" 
-        self.glossary = {}
+        self.glossary = {
+            CasesTableColumns.Case : "OICR assigned donor ID",
+            CasesTableColumns.ExternalID : "Identifier for the donor provided by the submitter.",
+            CasesTableColumns.SampleID : "OICR assigned sample Identifier, formed from other fields, and used for file names",
+            CasesTableColumns.LibraryType : "The sequencing library type",
+            CasesTableColumns.TissueOrigin : "The source tissue from which the sample was obtained, (comma separated values)",
+            CasesTableColumns.TissueType : "Information about the tissue source",
+            CasesTableColumns.GroupID : "An identifier unique to the sample, information provided by the submitter.",
+            CasesTableColumns.TissuePreparation : "Information about how the tissue was prepared",
+        }
         # Glossary templates
         self.tissue_types = {
             'X': 'Xenograft derived from some tumour.',
@@ -202,7 +223,7 @@ class CasesTable(Table):
 
     def case_data(self, cases_data):
         cases_data = cases_data.drop(columns=['Workflow Run ID', 'LIMS ID', 'Sample Name']).drop_duplicates()
-        column_order = ['Donor', 'SampleID'] + [col for col in cases_data.columns if col not in ['Donor', 'SampleID']]
+        column_order = ['Donor', 'External ID', 'SampleID'] + [col for col in cases_data.columns if col not in ['Donor', 'External ID', 'SampleID']]
         cases_data = cases_data[column_order]
 
         # Get the unique values present in the dataset for each category
@@ -216,9 +237,9 @@ class CasesTable(Table):
         ltype = {key: self.library_design.get(key, 'Unknown') for key in ltypes}
 
         # Update glossary with full descriptions based on the data in the table
-        self.glossary[CasesTableColumns.TissueType] = "\n".join([f"{k}: {v}" for k, v in ttype.items()])
-        self.glossary[CasesTableColumns.TissueOrigin] = "\n".join([f"{k}: {v}" for k, v in torigin.items()])
-        self.glossary[CasesTableColumns.LibraryType] = "\n".join([f"{k}: {v}" for k, v in ltype.items()])
+        self.glossary[CasesTableColumns.TissueType] += ": " + ", ".join([f"{k}: {v}" for k, v in ttype.items()])
+        self.glossary[CasesTableColumns.TissueOrigin] += ": " + ", ".join([f"{k}: {v}" for k, v in torigin.items()])
+        self.glossary[CasesTableColumns.LibraryType] += ": " + ", ".join([f"{k}: {v}" for k, v in ltype.items()])
         
         return cases_data
 
@@ -231,18 +252,47 @@ class CasesTable(Table):
 
         if data.empty:
             context["data"] = []
-        else:
-            data = data.sort_values(by=['Donor', 'Library Type'])  
-            context["data"] = data.to_dict(orient='records')
+            return context
 
+        data = data.sort_values(by=['Donor', 'External ID', 'Library Type', 'Tissue Type'])  
+        data.reset_index(drop=True, inplace=True)
+
+        grouped_data = data.groupby(['Donor', 'External ID']).groups
+        rows = data.to_dict(orient='records')
+
+        g_count = 0
+        for key, indices in grouped_data.items():
+            idx_list = list(indices)
+            
+            for i, idx in enumerate(idx_list):
+                rows[idx]['Donor'] = ''
+                rows[idx]['External ID'] = ''
+                rows[idx]['rowSpan'] = g_count
+                if len(idx_list) == 1:
+                    rows[idx]["pos"] = "middle"
+                elif i == 0:
+                    rows[idx]["pos"] = "first"
+                elif i == len(idx_list) - 1:
+                    rows[idx]["pos"] = "last"
+                else:
+                    rows[idx]["pos"] = "middle"
+                
+            mid_idx = idx_list[len(idx_list) // 2]
+            rows[mid_idx]["Donor"] = key[0]
+            rows[mid_idx]["External ID"] = key[1]
+            
+            g_count += 1
+
+        context["data"] = rows
         return context
+
+        
 
 #WGLaneLevelTable class defines a table for the bamqc4 workflow
 class WGLaneLevelTable(Table):
     def __init__(self):
         self.title = "Whole Genome Libraries, tumour and matched normal"
         self.headings = {
-            WGLaneLevelTableColumns.Case: "Donor",
             WGLaneLevelTableColumns.SampleID: "SampleID",
             WGLaneLevelTableColumns.Lane: "Sequencing Run",
             WGLaneLevelTableColumns.CoverageDedup: "Coverage Depth",
@@ -253,7 +303,6 @@ class WGLaneLevelTable(Table):
             WGLaneLevelTableColumns.SampleType: "Sample Type",
         }
         self.columns = {
-            WGLaneLevelTableColumns.Case: "\"Donor\"",
             WGLaneLevelTableColumns.SampleID: "\"SampleID\"",
             WGLaneLevelTableColumns.Lane: "\"Lane\"",
             WGLaneLevelTableColumns.CoverageDedup: "\"coverage deduplicated\"",
@@ -336,7 +385,7 @@ class WGLaneLevelTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WG_')]
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_Seqplot_data(data)
 
@@ -348,7 +397,6 @@ class WTLaneLevelTable(Table):
         self.title = "Whole Transcriptome Libraries, tumour only"
         self.blurb = ""
         self.headings = {
-            WTLaneLevelTableColumns.Case: "Donor",
             WTLaneLevelTableColumns.SampleID: "SampleID",
             WTLaneLevelTableColumns.Lane: "Sequencing Run",
             WTLaneLevelTableColumns.PctCodingBases: "Percent Coding (%)",
@@ -358,7 +406,6 @@ class WTLaneLevelTable(Table):
             WTLaneLevelTableColumns.SampleType: "Sample Type",
         }
         self.columns = {
-            WTLaneLevelTableColumns.Case: "\"Donor\"",
             WTLaneLevelTableColumns.SampleID: "\"SampleID\"",
             WTLaneLevelTableColumns.Lane: "\"Lane\"",
             WTLaneLevelTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
@@ -440,7 +487,7 @@ class WTLaneLevelTable(Table):
             context["plots"] = {}
         else:
             data = data[data['SampleID'].str.contains('_WT_')]
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_Seqplot_data(data)
 
@@ -451,21 +498,19 @@ class WGCallReadyTable(Table):
     def __init__(self):
         self.title = "Whole Genome Libraries, tumour and matched normal"
         self.headings = {
-            WGCallReadyTableColumns.Case: "Donor",
             WGCallReadyTableColumns.SampleID: "SampleID",
-            WGCallReadyTableColumns.CoverageDedup: "Coverage Depth",
-            WGCallReadyTableColumns.MarkDupPctDup: "Duplication (%)",
             WGCallReadyTableColumns.TotalClusters: "Read Pairs",
             WGCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
+            WGCallReadyTableColumns.CoverageDedup: "Coverage Depth",
+            WGCallReadyTableColumns.MarkDupPctDup: "Duplication (%)",
             WGCallReadyTableColumns.SampleType: "Sample Type",
         }
         self.columns = {
-            WGCallReadyTableColumns.Case: "\"Donor\"",
             WGCallReadyTableColumns.SampleID: "\"SampleID\"",
-            WGCallReadyTableColumns.CoverageDedup: "\"coverage deduplicated\"",
-            WGCallReadyTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
             WGCallReadyTableColumns.TotalClusters: "\"total clusters\"",
             WGCallReadyTableColumns.MappedReads: "\"MappedReads\"",
+            WGCallReadyTableColumns.CoverageDedup: "\"coverage deduplicated\"",
+            WGCallReadyTableColumns.MarkDupPctDup: "\"mark duplicates_PERCENT_DUPLICATION\"",
             WGCallReadyTableColumns.SampleType: "\"Sample Type\"",
         }
         self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
@@ -493,17 +538,18 @@ class WGCallReadyTable(Table):
             )
         }
         self.glossary = {
-            WGCallReadyTableColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
-            WGCallReadyTableColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
             WGCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
             WGCallReadyTableColumns.MappedReads: "Percent of reads mapping to the genomic reference",
+            WGCallReadyTableColumns.CoverageDedup: "Mean depth of coverage corrected for duplication",
+            WGCallReadyTableColumns.MarkDupPctDup: "Percent of reads marked as duplicates",
+            WGCallReadyTableColumns.SampleType: "Sample Type (Tumour/Matched Normal)"
         }
     
     def get_data(self, bamqc4merged, cases_data):
         def derive(data):
             data['MappedReads'] = (
-                    (1 - data["unmapped reads meta"].astype(float) /
-                    data["total input reads meta"].astype(float)) * 100
+                    (1 - data["unmapped reads"].astype(float) /
+                    data["total reads"].astype(float)) * 100
                     ).round(2)
             return data
         
@@ -530,7 +576,7 @@ class WGCallReadyTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WG_')]
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID', 'Sample Type'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_Seqplot_data(data)
 
@@ -541,22 +587,18 @@ class WTCallReadyTable(Table):
     def __init__(self):
         self.title = "Whole Transcriptome Libraries, tumour only"
         self.headings = {
-            WTCallReadyTableColumns.Case: "Donor",
             WTCallReadyTableColumns.SampleID: "SampleID",
-            WTCallReadyTableColumns.PctCodingBases: "Percent Coding (%)",
             WTCallReadyTableColumns.TotalClusters: "Read Pairs",
             WTCallReadyTableColumns.MappedReads: "Mapped Reads (%)",
             WTCallReadyTableColumns.RRNAContamination: "rRNA Contamination (%)",
-            WTCallReadyTableColumns.SampleType: "Sample Type",
+            WTCallReadyTableColumns.PctCodingBases: "Percent Coding (%)",
         }
         self.columns = {
-            WTCallReadyTableColumns.Case: "\"Donor\"",
             WTCallReadyTableColumns.SampleID: "\"SampleID\"",
-            WTCallReadyTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
             WTCallReadyTableColumns.TotalClusters: "\"total clusters\"",
             WTCallReadyTableColumns.MappedReads: "\"MappedReads\"",
             WTCallReadyTableColumns.RRNAContamination: "\"rrnacontaminationpercent\"",
-            WTCallReadyTableColumns.SampleType: "\"Sample Type\"",
+            WTCallReadyTableColumns.PctCodingBases: "\"PCT_CODING_BASES\"",
         }
         self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
         self.pipeline_step = "alignments_WT.callready"
@@ -583,10 +625,10 @@ class WTCallReadyTable(Table):
             ),
         }
         self.glossary = {
-            WTCallReadyTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
             WTCallReadyTableColumns.TotalClusters: "Number of read pairs generated",
             WTCallReadyTableColumns.MappedReads: "Percentage of reads mapping to the genomic reference",
             WTCallReadyTableColumns.RRNAContamination: "Pecentage of reads mapping to ribosomal RNA",
+            WTCallReadyTableColumns.PctCodingBases: "Percentage of bases mapping to the coding regions of the genome",
         }
     def get_data(self, rnaseqqc2merged, cases_data):
         def derive(data):
@@ -598,7 +640,7 @@ class WTCallReadyTable(Table):
                     data["rrna contamination properly paired"].astype(float) /
                     data["rrna contamination in total (QC-passed reads + QC-failed reads)"].astype(float)
                 ) * 100).round(2)
-            data['PCT_CODING_BASES'] = ((data["PCT_CODING_BASES"].astype(float)) * 100).round(2)
+            data['PCT_CODING_BASES'] = data["PCT_CODING_BASES"].astype(float).round(2)
             return data
         
         return get_seq_metrics(
@@ -624,7 +666,7 @@ class WTCallReadyTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WT_')]
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_Seqplot_data(data)
 
@@ -635,7 +677,6 @@ class Mutect2Table(Table):
     def __init__(self):
         self.title = "Somatic Mutations"
         self.headings = {
-            Mutect2TableColumns.Case: "Donor",
             Mutect2TableColumns.SampleID: "SampleID",
             Mutect2TableColumns.NumCalls: "Calls",
             Mutect2TableColumns.NumPASS: "PASS Calls",
@@ -644,7 +685,6 @@ class Mutect2Table(Table):
             Mutect2TableColumns.TITVRatio: "Ti/Tv Ratio",
         }
         self.columns = {
-            Mutect2TableColumns.Case: "\"Donor\"",
             Mutect2TableColumns.SampleID: "\"SampleID\"",
             Mutect2TableColumns.NumCalls: "\"num_calls\"",
             Mutect2TableColumns.NumPASS: "\"num_PASS\"",
@@ -653,7 +693,7 @@ class Mutect2Table(Table):
             Mutect2TableColumns.TITVRatio: "\"titv_ratio\"",
         }
         self.pipeline_step = "calls.mutations"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
         self.col = gsiqcetl.column.AnalysisMutect2Column
         self.plots = {
             Mutect2TableColumns.NumPASS: Plot(
@@ -689,7 +729,7 @@ class Mutect2Table(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_plot_data(data)
 
@@ -700,7 +740,6 @@ class DellyTable(Table):
     def __init__(self):
         self.title = "Genomic Structural Variants"
         self.headings = {
-            DellyTableColumns.Case: "Donor",
             DellyTableColumns.SampleID: "SampleID",
             DellyTableColumns.NumCalls: "SV Calls",
             DellyTableColumns.NumPASS: "SV PASS Calls",
@@ -711,7 +750,6 @@ class DellyTable(Table):
             DellyTableColumns.NumINV: "Inversions",
         }
         self.columns = {
-            DellyTableColumns.Case: "\"Donor\"",
             DellyTableColumns.SampleID: "\"SampleID\"",
             DellyTableColumns.NumCalls: "\"num_calls\"",
             DellyTableColumns.NumPASS: "\"num_PASS\"",
@@ -722,7 +760,7 @@ class DellyTable(Table):
             DellyTableColumns.NumINV: "\"num_INV\"",
         }
         self.pipeline_step = "calls.structuralvariants"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
         self.col = gsiqcetl.column.AnalysisDellyColumn
         self.plots = {
             DellyTableColumns.NumPASS: Plot(
@@ -754,7 +792,7 @@ class DellyTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_plot_data(data)
 
@@ -765,14 +803,12 @@ class PurpleTable(Table):
     def __init__(self):
         self.title = "Purity and Ploidy Estimation"
         self.headings = {
-            PurpleTableColumns.Case: "Donor",
             PurpleTableColumns.SampleID: "SampleID",
             PurpleTableColumns.Purity: "Purity",
             PurpleTableColumns.Ploidy: "Ploidy",
             PurpleTableColumns.Pga: "PGA",
         }
         self.columns = {
-            PurpleTableColumns.Case: "\"donor\"",
             PurpleTableColumns.SampleID: "\"SampleID\"",
             PurpleTableColumns.Purity: "\"purity\"",
             PurpleTableColumns.Ploidy: "\"ploidy\"",
@@ -799,8 +835,8 @@ class PurpleTable(Table):
             ),
         }
         self.glossary = {
-            PurpleTableColumns.Purity: "Estimated tumor purity in the sample",
-            PurpleTableColumns.Ploidy: "Estimated ploidy of the tumor sample after adjusting for purity",
+            PurpleTableColumns.Purity: "Estimated tumour purity in the sample",
+            PurpleTableColumns.Ploidy: "Estimated ploidy of the tumour sample after adjusting for purity",
             PurpleTableColumns.Pga: "Percent genome altered score",
         }
     
@@ -817,7 +853,71 @@ class PurpleTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
+            context["data"] = data.to_dict(orient='records')
+            context["plots"] = self.add_plot_data(data)
+
+        return context
+
+# MrdTable class defines a table for the mrdetect workflow
+class MrdTable(Table):
+    def __init__(self):
+        self.title = "Minimal Residual Disease detection from paired tumor-plasma sample"
+        self.headings = {
+            MrdTableColumns.SampleID: "SampleID",
+            MrdTableColumns.SitesDetected: "sites_detected",
+            MrdTableColumns.CancerDetected: "cancer_detected",
+            MrdTableColumns.CandidateSNPs: "sample_candidate_SNPs",
+            MrdTableColumns.SampleCoverage: "sample_coverage",
+        }
+        self.columns = {
+            MrdTableColumns.SampleID: "\"SampleID\"",
+            MrdTableColumns.SitesDetected: "\"sites_detected\"",
+            MrdTableColumns.CancerDetected: "\"cancer_detected\"",
+            MrdTableColumns.CandidateSNPs: "\"sample_candidate_SNPs\"",
+            MrdTableColumns.SampleCoverage: "\"sample_coverage\"",
+        }
+        self.pipeline_step = "calls.mrdetect"
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
+        self.col = gsiqcetl.column.AnalysisMrdColumn
+        self.plots = {
+            MrdTableColumns.SitesDetected: Plot(
+                title="Sites Detected",
+                x_axis="SampleID",
+                y_axis="sites_detected",
+            ),
+            MrdTableColumns.CandidateSNPs: Plot(
+                title="Candidate SNPs",
+                x_axis="SampleID",
+                y_axis="sample_candidate_SNPs",
+            ),
+            MrdTableColumns.SampleCoverage: Plot(
+                title="Sample Coverage",
+                x_axis="SampleID",
+                y_axis="sample_coverage",
+            ),
+        }
+        self.glossary = {
+            MrdTableColumns.SitesDetected: "Genomic loci where mutations indicative of cancer were detected.",
+            MrdTableColumns.CancerDetected: "A categorical indicator showing whether cancer-related signals were detected.",
+            MrdTableColumns.CandidateSNPs: "The number of Single Nucleotide Polymorphisms (SNPs) identified in the sample that are considered potential tumor markers.",
+            MrdTableColumns.SampleCoverage: "Average number of reads per genomic position.",
+        }
+    
+    def load_context(self, cases_data, workflow_ids):
+        context = self.get_context(cases_data, workflow_ids)
+        etl_caches = QCETLMultiCache(self.gsiqcetl_dirs)
+        mrd = load_cache(etl_caches, 'analysis_mrd', 'analysis_mrd',
+            gsiqcetl.column.AnalysisMrdColumn.MergedPineryLimsID, True)
+
+        data = self.get_data(mrd, cases_data, workflow_ids) 
+        
+        if data.empty:
+            context["data"] = []
+            context["plots"] = {}
+        else:  
+            data = data[data['SampleID'].str.contains('_WG_')].drop_duplicates()
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_plot_data(data)
 
@@ -828,7 +928,6 @@ class RSEMTable(Table):
     def __init__(self):
         self.title = "Gene Expression"
         self.headings = {
-            RSEMTableColumns.Case: "Donor",
             RSEMTableColumns.SampleID: "SampleID",
             RSEMTableColumns.Total: "Total Reads",
             RSEMTableColumns.PctNonZero: "Percent Non-zero",
@@ -837,7 +936,6 @@ class RSEMTable(Table):
             RSEMTableColumns.Q0_95: "0.95 Quantile",
         }
         self.columns = {
-            RSEMTableColumns.Case: "\"Donor\"",
             RSEMTableColumns.SampleID: "\"SampleID\"",
             RSEMTableColumns.Total: "\"total\"",
             RSEMTableColumns.PctNonZero: "\"pct_non_zero\"",
@@ -846,15 +944,13 @@ class RSEMTable(Table):
             RSEMTableColumns.Q0_95: "\"Q0.95\"",
         }
         self.pipeline_step = "calls.expression"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
         self.col = gsiqcetl.column.AnalysisRSEMColumn
         self.plots = {
             RSEMTableColumns.PctNonZero: Plot(
                 title="Percent Expressed",
                 x_axis="SampleID",
                 y_axis="Percent Non-zero",
-                hi=100,
-                lo=0,
             ),
             RSEMTableColumns.Q0_5: Plot(
                 title="Median TPM",
@@ -883,7 +979,7 @@ class RSEMTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WT_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_plot_data(data)
 
@@ -894,17 +990,15 @@ class StarFusionTable(Table):
     def __init__(self):
         self.title = "Gene Fusions"
         self.headings = {
-            StarFusionTableColumns.Case: "Donor",
             StarFusionTableColumns.SampleID: "SampleID",
             StarFusionTableColumns.NumRecords: "Fusion Calls",
         }
         self.columns = {
-            StarFusionTableColumns.Case: "\"Donor\"",
             StarFusionTableColumns.SampleID: "\"SampleID\"",
             StarFusionTableColumns.NumRecords: "\"num_records\"",
         }
         self.pipeline_step = "calls.fusions"
-        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/production/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/production/ro']
+        self.gsiqcetl_dirs = ['/scratch2/groups/gsi/staging/qcetl_v1', '/.mounts/labs/gsi/gsiqcetl_archival/staging/ro']
         self.col = gsiqcetl.column.AnalysisStarFusionColumn
         self.plots = {
             StarFusionTableColumns.NumRecords: Plot(
@@ -930,7 +1024,7 @@ class StarFusionTable(Table):
             context["plots"] = {}
         else:  
             data = data[data['SampleID'].str.contains('_WT_')].drop_duplicates()
-            data = data.sort_values(by=['Donor', 'SampleID'])
+            data = data.sort_values(by=['SampleID'])
             context["data"] = data.to_dict(orient='records')
             context["plots"] = self.add_plot_data(data)
 
@@ -974,16 +1068,16 @@ def get_seq_metrics(cache, cases_data, column, derived_col, join_col, add_lane=F
         data['Lane'] = data[lane_col_params['run_alias']] + "_lane_" + data[lane_col_params['lane_number']].astype(str)
     
     if join_col == 'LIMS ID':
-        data = data.merge(cases[['LIMS ID', 'Donor', 'SampleID']], left_on=lims_col, right_on='LIMS ID', how='left')
+        data = data.merge(cases[['LIMS ID', 'SampleID']], left_on=lims_col, right_on='LIMS ID', how='left')
     elif join_col == 'Sample Name':
-        data = data.merge(cases[['Sample Name', 'Donor', 'SampleID']], left_on='library', right_on='Sample Name', how='left')
+        data = data.merge(cases[['Sample Name', 'SampleID']], left_on='library', right_on='Sample Name', how='left')
     elif join_col == 'Donor':
         data = data.merge(cases[['Donor', 'SampleID']], on='Donor', how='left')
     
-    data['Sample Type'] = data['SampleID'].apply(lambda x: 'Matched Normal' if '_R_' in str(x) else 'Tumor').str.strip()
+    data['Sample Type'] = data['SampleID'].apply(lambda x: 'Matched Normal' if '_R_' in str(x) else 'Tumour').str.strip()
     
     data = data[[col.strip('"') for col in column.values() if col.strip('"') in data.columns]].copy()
-    col = ['Donor', 'SampleID'] + [col for col in data.columns if col not in ['Donor', 'SampleID']]
+    col = ['SampleID'] + [col for col in data.columns if col not in ['SampleID']]
     data = data[col].drop_duplicates()
     
     data[data.select_dtypes(include='float').columns] = data.select_dtypes(include='float').round(2)

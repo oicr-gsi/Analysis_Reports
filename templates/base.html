@@ -4,30 +4,6 @@
     <meta charset="UTF-8">
     <link rel="stylesheet" href="./static/css/style.css">
     <title>analysis_report</title>
-    <style>
-        /* Dark grey header for tables */
-        .case_table th {
-            background-color: #BDB9B8;  
-            color: black;            
-            padding: 8px;
-            text-align: left;
-        }
-
-        /* Alternate row colors */
-        .case_table tr:nth-child(odd) {
-            background-color: #efefef ;  
-        }
-
-        .case_table tr:nth-child(even) {
-            background-color: #FFFDFC;  
-        }
-
-        .case_table th, .case_table td {
-            padding: 8px;
-            border: 1px solid #ddd;
-        }
-
-    </style>
 </head>
 <body style="margin-left:5mm">
     <table style="width:100%; font-family: Arial, Helvetica, sans-serif; margin-bottom:50px">
@@ -58,12 +34,12 @@
         {% set section_index = loop.index %}
         
         <div class="toc-row">
-            <a href="#{{ section }}">{{ loop.index }}. {{ sections[section].title }}</a>
+            <a href="#{{ section }}">{{ section_index }}. {{ sections[section].title }}</a>
             <div class="toc-fill"></div>
             <div class="toc-page" data-target="#{{ section }}"></div>
         </div>
         {% if sections[section].tables|length > 1 %}
-            {% for table in sections[section].tables %}     
+            {% for table in sections[section].tables %}
                 <div class="toc-row toc-sub">
                     <a href="#{{ section }}_{{ table }}"> 
                         {{ section_index }}.{{ loop.index }}. {{ sections[section].tables[table].title }}
@@ -77,34 +53,45 @@
     <div style="page-break-after: always;"></div>
 
     {% for section in sections %}
+        {% set section_index = loop.index %}
+        {% set has_subsections = sections[section].tables|length > 1 %}
+
         <div class="portrait">
             <div class="title_toc_wrap">
-                <h2 id="{{ section }}">{{ loop.index }}. {{ sections[section].title }}</h2>
+                <h2 id="{{ section }}">{{ section_index }}. {{ sections[section].title }}</h2>
                 <div class="return_to_toc"><a href="#toc"><b>Contents &#8593</b></a></div>
             </div>
             <p>{{ sections[section].blurb }}</p>
         </div>
 
         {% for table in sections[section].tables %}
+            {% set table_index = loop.index %}
             <div class="portrait">
-                {% if sections[section].tables|length > 1 %}        
+                {% if has_subsections %}
                     <h3 id="{{ section }}_{{ table }}">{{ sections[section].tables[table].title }}</h3>
                 {% endif %}
                 <p>{{ sections[section].tables[table].blurb }}</p>
             
                 <table class="case_table" style="font-size: 9px;">
                     <tr>
-                        {% for heading in sections[section].tables[table].headings %}
-                            <th>{{ sections[section].tables[table]["headings"][heading] }}</th>
+                        {% for key, heading in sections[section].tables[table].headings.items() %}
+                            <th>{{ heading }}</th>
                         {% endfor %}
                     </tr>  
                     {% for entry in sections[section].tables[table]["data"] %}
-                        <tr style="page-break-inside: avoid;">
-                            {% for id in entry %}
-                                {% if id == "donor" %}
-                                    <td>{{ entry[id] | replace(" ", "") }}</td>
+                        {% if sections[section].tables[table].title == "Cases" %}
+                            {% set row_class = "group-even" if entry["rowSpan"] % 2 == 0 else "group-odd" %}
+                            {% set group_position = entry["pos"] %}  
+                        {% else %}
+                            {% set row_class = loop.index0 % 2 == 0 and "even-row" or "odd-row" %}
+                            {% set group_position = "" %}
+                        {% endif %}
+                        <tr class="{{ row_class }} {{ group_position }}" style="page-break-inside: avoid;">
+                            {% for column_name in sections[section].tables[table].headings.values() %}
+                                {% if column_name == "Donor" or column_name == "External ID" %}
+                                    <td class="{{ column_name|lower|replace(' ', '_') }}-cell">{{ entry.get(column_name, '') }}</td>
                                 {% else %}
-                                    <td>{{ entry[id] }}</td>
+                                    <td>{{ entry.get(column_name, '') }}</td>
                                 {% endif %}
                             {% endfor %}
                         </tr>
@@ -121,14 +108,23 @@
             {% if sections[section].tables[table].plots %}
                 <h3>{{ sections[section].tables[table].title }} Plots</h3>
                 {% for plot in sections[section].tables[table].plots %}
+                    {% set plot_index = loop.index %}
                     <div style="page-break-inside: avoid;">
-                        <p style="font-size: 14px;font-weight: 600;">Figure {{ loop.index }}. Plot of {{ sections[section].tables[table].plots[plot].title }}</p>
-                            <br>
-                            <img src="{{ sections[section].tables[table].plots[plot].fig_path }}" alt="Plot Image"></img>
+                        <p style="font-size: 14px;font-weight: 600;">
+                            Figure 
+                            {% if has_subsections %}
+                                {{ section_index }}.{{ table_index }}.{{ plot_index }}
+                            {% else %}
+                                {{ section_index }}.{{ plot_index }}
+                            {% endif %}
+                            . Plot of {{ sections[section].tables[table].plots[plot].title }}
+                        </p>
+                        <br>
+                        <img src="{{ sections[section].tables[table].plots[plot].fig_path }}" alt="Plot Image"></img>
                     </div>
                 {% endfor %}
                 <div style="page-break-after: always;"></div>
-            {% endif %}                
+            {% endif %}
         {% endfor %}
     {% endfor %}
 </body>
